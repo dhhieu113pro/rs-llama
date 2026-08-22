@@ -1,0 +1,17 @@
+﻿/target/
+
+# Local model files
+/models/
+*.gguf
+
+# Environment files
+.env
+.env.*
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Temporary logs
+*.log

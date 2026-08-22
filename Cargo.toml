@@ -1,0 +1,18 @@
+﻿[package]
+name = "llama-rust"
+version = "0.1.0"
+edition = "2021"
+description = "A small Rust CLI powered by llama.cpp through llama-cpp-2"
+license = "MIT"
+
+[features]
+default = []
+cuda = ["llama-cpp-2/cuda"]
+vulkan = ["llama-cpp-2/vulkan"]
+metal = ["llama-cpp-2/metal"]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+encoding_rs = "0.8"
+llama-cpp-2 = "0.1.154"
