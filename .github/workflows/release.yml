@@ -96,15 +96,20 @@ jobs:
           "$BIN" \
             --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
             --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
-            --prompt "What is LED lamp?" \
-            --max-tokens 48 \
-            --ctx-size 512 \
+            --chat \
+            --no-echo-prompt \
+            --prompt "What is an LED lamp?" \
+            --max-tokens 80 \
+            --ctx-size 1024 \
             --threads 2 \
             | tee smoke-output.txt
           test -s smoke-output.txt
-          echo "Smoke test produced $(wc -c < smoke-output.txt) bytes of output"
-          echo "----- model output -----"
+          echo "----- model answer -----"
           cat smoke-output.txt
+          if ! grep -qiE 'led|light|diode|lamp|electric|bulb' smoke-output.txt; then
+            echo "Smoke test did not answer the LED lamp question"
+            exit 1
+          fi
 
       - name: Upload tested Linux/macOS binary
         if: runner.os != 'Windows'
