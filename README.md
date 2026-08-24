@@ -15,10 +15,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/dhhieu113pro/rs-llama/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/dhhieu113pro/rs-llama/ci.yml?branch=main&style=flat-square&label=CI" alt="CI">
+  </a>
   <img src="https://img.shields.io/github/v/release/dhhieu113pro/rs-llama?style=flat-square" alt="Release">
   <img src="https://img.shields.io/github/license/dhhieu113pro/rs-llama?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS%20%7C%20Android-blue?style=flat-square" alt="Platforms">
   <img src="https://img.shields.io/badge/GPU-CUDA%20%7C%20Vulkan%20%7C%20Metal-green?style=flat-square" alt="GPU">
+  <img src="https://img.shields.io/github/last-commit/dhhieu113pro/rs-llama?style=flat-square" alt="Last commit">
 </p>
 
 ---
