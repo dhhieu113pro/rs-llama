@@ -9,10 +9,10 @@ Releases: [github.com/dhhieu113pro/rs-llama/releases](https://github.com/dhhieu1
 
 | Platform | CI | Release asset |
 | --- | --- | --- |
-| Linux x86_64 | build + LED smoke + vision | `rs-llama-linux-x86_64.tar.gz` |
-| Windows x86_64 | build + LED smoke + vision | `rs-llama-windows-x86_64.zip` |
+| Linux x86_64 | LED smoke + vision | `rs-llama-linux-x86_64.tar.gz` |
+| Windows x86_64 | LED smoke + vision | `rs-llama-windows-x86_64.zip` |
 | macOS Apple Silicon | Metal + LED smoke + vision | `rs-llama-macos-arm64.tar.gz` |
-| Android / Termux arm64 | NDK cross-compile | `rs-llama-android-arm64.tar.gz` |
+| Android / Termux arm64 | NDK build + emulator vision (x86_64) | `rs-llama-android-arm64.tar.gz` |
 | NVIDIA CUDA | Linux compile | `--features cuda` |
 | Vulkan | Linux compile | `--features vulkan` |
 
@@ -92,7 +92,7 @@ cargo run --release -- --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF --hf-fi
 
 ## Vision / mmproj
 
-CI generates a text image (`LED LAMP`) and runs `--image` on Linux, Windows, and macOS.
+CI generates a text image (`LED LAMP`) and runs `--image` on Linux, Windows, macOS, and an Android x86_64 emulator.
 
 ```bash
 cargo run --release -- --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF --hf-file SmolVLM-256M-Instruct-Q8_0.gguf --image ./photo.jpg --chat --prompt "What is in this image?"
@@ -104,6 +104,7 @@ cargo run --release -- --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF --hf-file S
 | --- | --- |
 | CPU + LED lamp smoke | Linux, Windows, macOS |
 | Vision image + mmproj | Linux, Windows, macOS |
+| Vision image + mmproj | Android emulator x86_64 |
 | Metal | macOS |
 | Vulkan / CUDA compile | Linux |
-| Android arm64 | NDK `cargo ndk -t arm64-v8a` |
+| Android arm64 release binary | NDK `arm64-v8a` |
