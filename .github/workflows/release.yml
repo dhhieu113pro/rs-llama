@@ -34,7 +34,7 @@ jobs:
             binary: rs-llama
 
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -73,7 +73,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: models
-          key: smollm2-135m-instruct-q4-k-m-${{ runner.os }}
+          key: gguf-smollm2-smolvlm-${{ runner.os }}
 
       - name: Refresh lockfile after crate rename
         run: cargo generate-lockfile
@@ -110,6 +110,10 @@ jobs:
             echo "Smoke test did not answer the LED lamp question"
             exit 1
           fi
+
+      - name: Smoke test vision mmproj + image
+        shell: bash
+        run: bash scripts/ci-vision-smoke.sh
 
       - name: Upload tested Linux/macOS binary
         if: runner.os != 'Windows'
