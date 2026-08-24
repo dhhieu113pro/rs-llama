@@ -185,6 +185,10 @@ fn emit_link_flags(dst: &Path, target: &str) {
         }
     }
 
+    if cfg!(feature = "cuda") {
+        emit_cuda_link_flags(target);
+    }
+
     if target.contains("windows") {
         println!("cargo:rustc-link-lib=dylib=advapi32");
         println!("cargo:rustc-link-lib=dylib=user32");
@@ -207,6 +211,54 @@ fn emit_link_flags(dst: &Path, target: &str) {
         println!("cargo:rustc-link-lib=dylib=dl");
         println!("cargo:rustc-link-lib=dylib=m");
         println!("cargo:rustc-link-lib=dylib=gomp");
+    }
+}
+
+fn emit_cuda_link_flags(target: &str) {
+    for key in ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"] {
+        println!("cargo:rerun-if-env-changed={key}");
+    }
+
+    let cuda_root = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
+        .into_iter()
+        .find_map(|key| env::var_os(key).map(PathBuf::from))
+        .or_else(|| (!target.contains("windows")).then(|| PathBuf::from("/usr/local/cuda")));
+
+    if let Some(root) = cuda_root {
+        let mut search_dirs = Vec::new();
+        if target.contains("windows") {
+            search_dirs.push(root.join("lib/x64"));
+        } else {
+            search_dirs.push(root.join("lib64"));
+            if target.starts_with("aarch64-") {
+                search_dirs.push(root.join("targets/aarch64-linux/lib"));
+            } else {
+                search_dirs.push(root.join("targets/x86_64-linux/lib"));
+            }
+
+            for dir in search_dirs.clone() {
+                search_dirs.push(dir.join("stubs"));
+            }
+        }
+
+        for dir in search_dirs {
+            if dir.exists() {
+                println!("cargo:rustc-link-search=native={}", dir.display());
+            }
+        }
+    }
+
+    if target.contains("windows") {
+        println!("cargo:rustc-link-lib=dylib=cudart");
+        println!("cargo:rustc-link-lib=dylib=cublas");
+        println!("cargo:rustc-link-lib=dylib=cublasLt");
+        println!("cargo:rustc-link-lib=dylib=cuda");
+    } else {
+        println!("cargo:rustc-link-lib=static=cudart_static");
+        println!("cargo:rustc-link-lib=static=cublas_static");
+        println!("cargo:rustc-link-lib=static=cublasLt_static");
+        println!("cargo:rustc-link-lib=dylib=cuda");
+        println!("cargo:rustc-link-lib=static=culibos");
     }
 }
 
