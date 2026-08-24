@@ -51,7 +51,7 @@ jobs:
       - name: Smoke test LLM inference
         run: |
           set -euo pipefail
-          ./target/release/llama-rust \
+          ./target/release/rs-llama \
             --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
             --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
             --prompt "Write one short sentence about Rust." \

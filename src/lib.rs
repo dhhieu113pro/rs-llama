@@ -1,6 +1,6 @@
-//! Library API for loading GGUF models and running local inference.
+//! `rs-llama` library API for loading GGUF models and running local inference.
 //!
-//! The CLI in `src/main.rs` is a thin wrapper around this crate.
+//! The CLI binary is `rs-llama`. Import the library as `rs_llama`.
 
 mod download;
 mod engine;

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use llama_rust::{resolve_model_path, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
+use rs_llama::{resolve_model_path, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Run a GGUF model with llama.cpp from Rust")]

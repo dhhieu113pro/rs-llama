@@ -1,17 +1,28 @@
 [package]
-name = "llama-rust"
+name = "rs-llama"
 version = "0.1.0"
 edition = "2021"
 description = "Rust library and CLI for running GGUF models through llama.cpp"
 license = "MIT"
 repository = "https://github.com/dhhieu113pro/llama-rust"
+homepage = "https://github.com/dhhieu113pro/llama-rust"
+readme = "README.md"
+keywords = ["llm", "llama", "gguf", "llama-cpp"]
+categories = ["command-line-utilities", "api-bindings"]
+include = [
+    "src/**/*",
+    "Cargo.toml",
+    "Cargo.lock",
+    "README.md",
+    "LICENSE",
+]
 
 [lib]
-name = "llama_rust"
+name = "rs_llama"
 path = "src/lib.rs"
 
 [[bin]]
-name = "llama-rust"
+name = "rs-llama"
 path = "src/main.rs"
 
 [features]

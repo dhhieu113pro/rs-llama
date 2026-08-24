@@ -1,4 +1,4 @@
-﻿name: Build and Release
+name: Build and Release
 
 on:
   push:
@@ -22,13 +22,13 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
-            artifact: llama-rust-linux-x86_64
+            artifact: rs-llama-linux-x86_64
           - name: Windows x64
             os: windows-latest
-            artifact: llama-rust-windows-x86_64
+            artifact: rs-llama-windows-x86_64
           - name: macOS
             os: macos-latest
-            artifact: llama-rust-macos
+            artifact: rs-llama-macos
 
     runs-on: ${{ matrix.os }}
 
@@ -73,24 +73,24 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp target/release/llama-rust dist/llama-rust
-          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" llama-rust
+          cp target/release/rs-llama dist/rs-llama
+          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" rs-llama
 
       - name: Package macOS binary
         if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p dist
-          cp target/release/llama-rust dist/llama-rust
-          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" llama-rust
+          cp target/release/rs-llama dist/rs-llama
+          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" rs-llama
 
       - name: Package Windows binary
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target\release\llama-rust.exe dist\llama-rust.exe
-          Compress-Archive -Path dist\llama-rust.exe -DestinationPath "${{ matrix.artifact }}.zip"
+          Copy-Item target\release\rs-llama.exe dist\rs-llama.exe
+          Compress-Archive -Path dist\rs-llama.exe -DestinationPath "${{ matrix.artifact }}.zip"
 
       - name: Upload Linux/macOS artifact
         if: runner.os != 'Windows'
