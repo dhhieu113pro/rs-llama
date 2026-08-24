@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use rs_llama::{resolve_model_path, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
 
@@ -54,6 +54,17 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    // llama.cpp uses large stack frames. Windows defaults to 1MB and overflows.
+    std::thread::Builder::new()
+        .name("rs-llama".into())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(run)
+        .context("failed to start inference thread")?
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+}
+
+fn run() -> Result<()> {
     let args = Args::parse();
 
     let hf = match (&args.hf_repo, &args.hf_file) {
