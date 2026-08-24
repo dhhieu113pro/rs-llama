@@ -8,6 +8,8 @@ fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-env-changed=LLAMA_CPP_SRC");
     println!("cargo:rerun-if-env-changed=LLAMA_CPP_REV");
+    println!("cargo:rerun-if-env-changed=GGML_CUDA_ARCHITECTURES");
+    println!("cargo:rerun-if-env-changed=CCACHE");
     println!("cargo:rerun-if-env-changed=ANDROID_NDK_HOME");
     println!("cargo:rerun-if-env-changed=ANDROID_NDK");
     println!("cargo:rerun-if-env-changed=NDK_HOME");
@@ -66,13 +68,38 @@ fn android_abi(target: &str) -> &'static str {
     }
 }
 
+fn ccache_enabled() -> bool {
+    match env::var("CCACHE").as_deref() {
+        Ok("1") | Ok("true") | Ok("TRUE") | Ok("yes") | Ok("YES") => true,
+        Ok("0") | Ok("false") | Ok("FALSE") | Ok("no") | Ok("NO") => false,
+        _ => env::var_os("CI").is_some() && which_ccache().is_some(),
+    }
+}
+
+fn which_ccache() -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    for dir in env::split_paths(&path) {
+        let candidate = dir.join("ccache");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        #[cfg(windows)]
+        {
+            let candidate_exe = dir.join("ccache.exe");
+            if candidate_exe.is_file() {
+                return Some(candidate_exe);
+            }
+        }
+    }
+    None
+}
+
 fn build_llama(src: &Path, target: &str) -> PathBuf {
     let mut config = cmake::Config::new(src);
     config
         .profile("Release")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("GGML_NATIVE", "OFF")
-        .define("GGML_CCACHE", "OFF")
         .define("LLAMA_BUILD_TESTS", "OFF")
         .define("LLAMA_BUILD_TOOLS", "OFF")
         .define("LLAMA_BUILD_EXAMPLES", "OFF")
@@ -81,8 +108,20 @@ fn build_llama(src: &Path, target: &str) -> PathBuf {
         .define("LLAMA_BUILD_APP", "OFF")
         .define("LLAMA_CURL", "OFF");
 
+    if ccache_enabled() {
+        config.define("GGML_CCACHE", "ON");
+    } else {
+        config.define("GGML_CCACHE", "OFF");
+    }
+
     if cfg!(feature = "cuda") {
         config.define("GGML_CUDA", "ON");
+        // Limit architectures in CI to cut compile time (override via GGML_CUDA_ARCHITECTURES).
+        if let Ok(archs) = env::var("GGML_CUDA_ARCHITECTURES") {
+            if !archs.trim().is_empty() {
+                config.define("GGML_CUDA_ARCHITECTURES", archs.trim());
+            }
+        }
     }
     if cfg!(feature = "vulkan") {
         config.define("GGML_VULKAN", "ON");

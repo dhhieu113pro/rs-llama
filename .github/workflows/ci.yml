@@ -72,9 +72,6 @@ jobs:
           path: models
           key: gguf-smollm2-smolvlm-${{ runner.os }}
 
-      - name: Refresh lockfile after crate rename
-        run: cargo generate-lockfile
-
       - name: Build release binary
         run: cargo build --release ${{ matrix.cargo_features }}
 
@@ -140,7 +137,7 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake clang libclang-dev
+          sudo apt-get install -y build-essential cmake clang libclang-dev ccache
 
       - name: Install Vulkan SDK
         if: matrix.features == 'vulkan'
@@ -163,16 +160,38 @@ jobs:
           sub-packages: '["compiler", "libraries-dev"]'
           use-github-cache: true
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ matrix.features }}-${{ runner.os }}-${{ hashFiles('crates/llama-sys/build.rs', 'Cargo.lock') }}
+          restore-keys: |
+            ccache-${{ matrix.features }}-${{ runner.os }}-
+
+      - name: Configure ccache
+        run: |
+          ccache --set-config=max_size=2G
+          ccache --set-config=compression=true
+          ccache -z
+          echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           prefix-key: backend-${{ matrix.features }}
 
-      - name: Refresh lockfile after crate rename
-        run: cargo generate-lockfile
-
       - name: Compile backend
+        env:
+          CCACHE: "1"
+          # Fewer GPU archs = much faster CUDA kernel compile in CI.
+          # Override locally with GGML_CUDA_ARCHITECTURES if needed.
+          GGML_CUDA_ARCHITECTURES: ${{ matrix.features == 'cuda' && '75;80;86;89' || '' }}
+          CMAKE_BUILD_PARALLEL_LEVEL: "4"
         run: cargo build --release --features ${{ matrix.features }}
+
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s || true
 
   android:
     name: Build Android arm64 (Termux target)
@@ -202,9 +221,6 @@ jobs:
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
-
-      - name: Refresh lockfile after crate rename
-        run: cargo generate-lockfile
 
       - name: Cross-compile aarch64-linux-android
         env:
@@ -242,7 +258,6 @@ jobs:
           add-to-path: false
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
-      - run: cargo generate-lockfile
       - name: Cross-compile x86_64-linux-android
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
