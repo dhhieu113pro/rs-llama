@@ -15,7 +15,7 @@ jobs:
   smoke:
     name: Test CPU ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -70,7 +70,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: models
-          key: smollm2-135m-instruct-q4-k-m-${{ runner.os }}
+          key: gguf-smollm2-smolvlm-${{ runner.os }}
 
       - name: Refresh lockfile after crate rename
         run: cargo generate-lockfile
@@ -105,6 +105,47 @@ jobs:
           cat smoke-output.txt
           if ! grep -qiE 'led|light|diode|lamp|electric|bulb' smoke-output.txt; then
             echo "Smoke test did not answer the LED lamp question"
+            exit 1
+          fi
+
+      - name: Smoke test vision mmproj + image
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=target/release/rs-llama
+          python3 - <<'PY'
+          from pathlib import Path
+          Path('testdata').mkdir(exist_ok=True)
+          # 1x1 yellow PNG
+          Path('testdata/led-lamp.png').write_bytes(bytes.fromhex(
+              '89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de'
+              '0000000c4944415408d763f8ff33c00000030101d5d45f8b0000000049454e44ae426082'
+          ))
+          PY
+          "$BIN" \
+            --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF \
+            --hf-file SmolVLM-256M-Instruct-Q8_0.gguf \
+            --image testdata/led-lamp.png \
+            --chat \
+            --no-echo-prompt \
+            --prompt "What is an LED lamp?" \
+            --max-tokens 48 \
+            --ctx-size 2048 \
+            --threads 2 \
+            >vision-output.txt 2>vision-stderr.txt
+          echo "----- vision stderr -----"
+          cat vision-stderr.txt
+          echo "----- vision stdout -----"
+          cat vision-output.txt
+          if ! grep -qiE 'mmproj|vision' vision-stderr.txt; then
+            echo "Vision test did not download or attach mmproj"
+            exit 1
+          fi
+          test -s vision-output.txt
+          ls -lah models | tee vision-models.txt
+          if ! ls models | grep -qi mmproj; then
+            echo "No mmproj file cached in models/"
             exit 1
           fi
 
