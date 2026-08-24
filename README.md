@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/github/v/release/dhhieu113pro/rs-llama?style=flat-square" alt="Release">
   <img src="https://img.shields.io/github/license/dhhieu113pro/rs-llama?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS%20%7C%20Android-blue?style=flat-square" alt="Platforms">
-  <img src="https://img.shields.io/badge/GPU-CUDA%20%7C%20Vulkan%20%7C%20Metal-green?style=flat-square" alt="GPU">
+  <img src="https://img.shields.io/badge/GPU-Vulkan%20%7C%20Metal-green?style=flat-square" alt="GPU">
   <img src="https://img.shields.io/github/last-commit/dhhieu113pro/rs-llama?style=flat-square" alt="Last commit">
 </p>
 
@@ -35,7 +35,6 @@
 | Windows x86_64        | LED smoke + vision          | `rs-llama-windows-x86_64.zip`        |
 | macOS Apple Silicon   | Metal + LED smoke + vision  | `rs-llama-macos-arm64.tar.gz`        |
 | Android / Termux arm64| NDK build + emulator vision | `rs-llama-android-arm64.tar.gz`      |
-| NVIDIA CUDA           | Linux compile               | `--features cuda`                    |
 | Vulkan                | Linux compile               | `--features vulkan`                  |
 
 Tags `v*` publish the four binaries plus `SHA256SUMS`.
@@ -104,7 +103,6 @@ fn main() -> anyhow::Result<()> {
 
 ```bash
 cargo build --release
-cargo build --release --features cuda
 cargo build --release --features vulkan
 cargo build --release --features metal
 ```
@@ -149,7 +147,7 @@ cargo run --release -- \
 | Vision image + mmproj        | Linux, Windows, macOS          |
 | Vision image + mmproj        | Android emulator x86_64        |
 | Metal                        | macOS                          |
-| Vulkan / CUDA compile        | Linux                          |
+| Vulkan compile               | Linux                          |
 | Android arm64 release binary | NDK `arm64-v8a`                |
 
 ## License

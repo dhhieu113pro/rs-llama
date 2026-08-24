@@ -32,7 +32,7 @@
       <div class="hero-copy">
         <p class="hero-note">Rust binding + CLI for llama.cpp</p>
         <h1 id="hero-title">Run llama.cpp from Rust.</h1>
-        <p class="hero-lede">Load GGUF models locally, download from Hugging Face, add vision with mmproj, and choose CPU, CUDA, Vulkan, or Metal.</p>
+        <p class="hero-lede">Load GGUF models locally, download from Hugging Face, add vision with mmproj, and choose CPU, Vulkan, or Metal.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#examples">Get started</a>
           <a class="button button-secondary" href="https://github.com/dhhieu113pro/rs-llama">View on GitHub</a>
@@ -58,7 +58,7 @@ rs-llama = { git = &quot;https://github.com/dhhieu113pro/rs-llama&quot; }</code>
     </section>
 
     <section class="capability-rail" aria-label="Supported capabilities">
-      <span>CPU</span><span>CUDA</span><span>Vulkan</span><span>Metal</span><span>Vision</span><span>Hugging Face</span><span>Windows</span><span>Linux</span><span>macOS</span><span>Android / Termux</span>
+      <span>CPU</span><span>Vulkan</span><span>Metal</span><span>Vision</span><span>Hugging Face</span><span>Windows</span><span>Linux</span><span>macOS</span><span>Android / Termux</span>
     </section>
 
     <section class="architecture" aria-labelledby="architecture-title">
@@ -122,7 +122,6 @@ fn main() -&gt; anyhow::Result&lt;()&gt; {
             <button class="copy-button" type="button" data-copy-target="backend-code">Copy</button>
           </div>
           <pre><code id="backend-code">cargo build --release
-cargo build --release --features cuda
 cargo build --release --features vulkan
 cargo build --release --features metal</code></pre>
         </article>
@@ -142,7 +141,6 @@ cargo build --release --features metal</code></pre>
             <tr><th scope="row">Windows x86_64</th><td data-label="CI">LED smoke + vision</td><td data-label="Release / feature"><code>rs-llama-windows-x86_64.zip</code></td></tr>
             <tr><th scope="row">macOS Apple Silicon</th><td data-label="CI">Metal + LED smoke + vision</td><td data-label="Release / feature"><code>rs-llama-macos-arm64.tar.gz</code></td></tr>
             <tr><th scope="row">Android / Termux arm64</th><td data-label="CI">NDK build + emulator vision (x86_64)</td><td data-label="Release / feature"><code>rs-llama-android-arm64.tar.gz</code></td></tr>
-            <tr><th scope="row">NVIDIA CUDA</th><td data-label="CI">Linux compile</td><td data-label="Release / feature"><code>--features cuda</code></td></tr>
             <tr><th scope="row">Vulkan</th><td data-label="CI">Linux compile</td><td data-label="Release / feature"><code>--features vulkan</code></td></tr>
           </tbody>
         </table>

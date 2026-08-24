@@ -123,9 +123,6 @@ jobs:
           - name: Vulkan Linux
             os: ubuntu-latest
             features: vulkan
-          - name: CUDA Linux
-            os: ubuntu-latest
-            features: cuda
 
     steps:
       - name: Checkout
@@ -153,15 +150,6 @@ jobs:
             spirv-headers \
             spirv-tools \
             mesa-vulkan-drivers
-
-      - name: Install CUDA build toolkit
-        if: matrix.features == 'cuda'
-        uses: Jimver/cuda-toolkit@v0.2.36
-        with:
-          cuda: "12.6.3"
-          method: network
-          sub-packages: '["compiler", "libraries-dev"]'
-          use-github-cache: true
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
