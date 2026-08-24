@@ -1,9 +1,18 @@
-﻿[package]
+[package]
 name = "llama-rust"
 version = "0.1.0"
 edition = "2021"
-description = "A small Rust CLI powered by llama.cpp through llama-cpp-2"
+description = "Rust library and CLI for running GGUF models through llama.cpp"
 license = "MIT"
+repository = "https://github.com/dhhieu113pro/llama-rust"
+
+[lib]
+name = "llama_rust"
+path = "src/lib.rs"
+
+[[bin]]
+name = "llama-rust"
+path = "src/main.rs"
 
 [features]
 default = []

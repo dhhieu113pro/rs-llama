@@ -1,19 +1,9 @@
-﻿use std::env;
-use std::fs::{self, File};
-use std::io::{self, Read, Write};
-use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use std::io::{self, Write};
+use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use clap::Parser;
-use llama_cpp_2::context::params::LlamaContextParams;
-use llama_cpp_2::llama_backend::LlamaBackend;
-use llama_cpp_2::llama_batch::LlamaBatch;
-use llama_cpp_2::model::params::LlamaModelParams;
-use llama_cpp_2::model::{AddBos, LlamaModel};
-use llama_cpp_2::sampling::LlamaSampler;
-use reqwest::blocking::Client;
-use reqwest::header::AUTHORIZATION;
+use llama_rust::{resolve_model_path, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Run a GGUF model with llama.cpp from Rust")]
@@ -65,241 +55,32 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let model_path = resolve_model_path(&args)?;
 
-    let backend = LlamaBackend::init().context("failed to initialize llama.cpp backend")?;
+    let hf = match (&args.hf_repo, &args.hf_file) {
+        (Some(repo), Some(file)) => Some(HfDownload {
+            repo: repo.clone(),
+            file: file.clone(),
+            revision: args.hf_revision.clone(),
+            model_dir: args.model_dir.clone(),
+            force: args.hf_force_download,
+            show_progress: true,
+        }),
+        _ => None,
+    };
 
-    let model_params = make_model_params(args.gpu_layers);
-    let model = LlamaModel::load_from_file(&backend, &model_path, &model_params)
-        .with_context(|| format!("failed to load model: {}", model_path.display()))?;
+    let model_path = resolve_model_path(args.model.as_deref(), hf.as_ref())?;
+    let engine = LlamaEngine::load(
+        EngineConfig::new(model_path)
+            .with_ctx_size(args.ctx_size)
+            .with_threads(args.threads)
+            .with_gpu_layers(args.gpu_layers),
+    )?;
 
-    let n_ctx = NonZeroU32::new(args.ctx_size).context("ctx-size must be greater than zero")?;
-    let mut ctx_params = LlamaContextParams::default().with_n_ctx(Some(n_ctx));
-
-    if args.threads > 0 {
-        ctx_params = ctx_params
-            .with_n_threads(args.threads)
-            .with_n_threads_batch(args.threads);
-    }
-
-    let mut ctx = model
-        .new_context(&backend, ctx_params)
-        .context("failed to create llama.cpp context")?;
-
-    let prompt_tokens = model
-        .str_to_token(&args.prompt, AddBos::Always)
-        .context("failed to tokenize prompt")?;
-
-    if prompt_tokens.is_empty() {
-        bail!("prompt produced no tokens");
-    }
-
-    let max_total_tokens = prompt_tokens.len() as i32 + args.max_tokens;
-    if max_total_tokens > ctx.n_ctx() as i32 {
-        bail!(
-            "prompt + max-tokens ({max_total_tokens}) exceeds context size ({})",
-            ctx.n_ctx()
-        );
-    }
-
-    let mut batch = LlamaBatch::new(512, 1);
-    let last_prompt_index = prompt_tokens.len() - 1;
-
-    for (i, token) in prompt_tokens.iter().copied().enumerate() {
-        batch.add(token, i as i32, &[0], i == last_prompt_index)?;
-    }
-
-    ctx.decode(&mut batch).context("failed to decode prompt")?;
+    let request = GenerateRequest::new(&args.prompt).with_max_tokens(args.max_tokens);
 
     print!("{}", args.prompt);
     io::stdout().flush()?;
-
-    let mut sampler = LlamaSampler::chain_simple([
-        LlamaSampler::temp(0.8),
-        LlamaSampler::dist(42),
-    ]);
-
-    let mut decoder = encoding_rs::UTF_8.new_decoder();
-    let mut position = prompt_tokens.len() as i32;
-
-    for _ in 0..args.max_tokens {
-        let token = sampler.sample(&ctx, batch.n_tokens() - 1);
-        sampler.accept(token);
-
-        if model.is_eog_token(token) {
-            break;
-        }
-
-        let piece = model.token_to_piece(token, &mut decoder, true, None)?;
-        print!("{piece}");
-        io::stdout().flush()?;
-
-        batch.clear();
-        batch.add(token, position, &[0], true)?;
-        ctx.decode(&mut batch).context("failed to decode generated token")?;
-        position += 1;
-    }
-
+    engine.generate_to_writer(&request, &mut io::stdout())?;
     println!();
     Ok(())
-}
-
-fn resolve_model_path(args: &Args) -> Result<PathBuf> {
-    match (&args.model, &args.hf_repo, &args.hf_file) {
-        (Some(model), None, None) => {
-            if !model.exists() {
-                bail!("model does not exist: {}", model.display());
-            }
-            Ok(model.clone())
-        }
-        (None, Some(repo), Some(file)) => download_huggingface_model(
-            repo,
-            file,
-            &args.hf_revision,
-            &args.model_dir,
-            args.hf_force_download,
-        ),
-        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
-            bail!("use either --model or --hf-repo/--hf-file, not both")
-        }
-        (None, Some(_), None) => bail!("--hf-file is required when --hf-repo is used"),
-        (None, None, Some(_)) => bail!("--hf-repo is required when --hf-file is used"),
-        (None, None, None) => bail!("provide --model or --hf-repo with --hf-file"),
-    }
-}
-
-fn download_huggingface_model(
-    repo: &str,
-    file: &str,
-    revision: &str,
-    model_dir: &Path,
-    force: bool,
-) -> Result<PathBuf> {
-    let file_name = Path::new(file)
-        .file_name()
-        .context("invalid --hf-file path")?;
-
-    fs::create_dir_all(model_dir)
-        .with_context(|| format!("failed to create model directory: {}", model_dir.display()))?;
-
-    let destination = model_dir.join(file_name);
-    if destination.exists() && !force {
-        eprintln!("Using cached model: {}", destination.display());
-        return Ok(destination);
-    }
-
-    let url = format!(
-        "https://huggingface.co/{repo}/resolve/{revision}/{file}?download=true"
-    );
-
-    eprintln!("Downloading {repo}/{file} ...");
-
-    let client = Client::builder()
-        .user_agent(concat!("llama-rust/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .context("failed to create HTTP client")?;
-
-    let mut request = client.get(&url);
-    if let Some(token) = huggingface_token() {
-        request = request.header(AUTHORIZATION, format!("Bearer {token}"));
-    }
-
-    let mut response = request.send().context("Hugging Face download request failed")?;
-    if !response.status().is_success() {
-        bail!(
-            "Hugging Face download failed with HTTP {} for {repo}/{file}",
-            response.status()
-        );
-    }
-
-    let total = response.content_length();
-    let temporary = destination.with_extension("gguf.part");
-    let mut output = File::create(&temporary)
-        .with_context(|| format!("failed to create: {}", temporary.display()))?;
-
-    let mut downloaded = 0_u64;
-    let mut buffer = [0_u8; 1024 * 1024];
-
-    loop {
-        let read = response.read(&mut buffer).context("failed while downloading model")?;
-        if read == 0 {
-            break;
-        }
-
-        output
-            .write_all(&buffer[..read])
-            .context("failed while writing downloaded model")?;
-        downloaded += read as u64;
-
-        if let Some(total) = total {
-            let percent = downloaded as f64 / total as f64 * 100.0;
-            eprint!("\r{:.1}% ({}/{})", percent, format_bytes(downloaded), format_bytes(total));
-        } else {
-            eprint!("\r{} downloaded", format_bytes(downloaded));
-        }
-        io::stderr().flush()?;
-    }
-
-    output.flush()?;
-    drop(output);
-    eprintln!();
-
-    if destination.exists() {
-        fs::remove_file(&destination)
-            .with_context(|| format!("failed to replace: {}", destination.display()))?;
-    }
-    fs::rename(&temporary, &destination).with_context(|| {
-        format!(
-            "failed to move downloaded model from {} to {}",
-            temporary.display(),
-            destination.display()
-        )
-    })?;
-
-    eprintln!("Saved model: {}", destination.display());
-    Ok(destination)
-}
-
-fn huggingface_token() -> Option<String> {
-    env::var("HF_TOKEN")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            env::var("HUGGING_FACE_HUB_TOKEN")
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-        })
-}
-
-fn format_bytes(bytes: u64) -> String {
-    const KIB: f64 = 1024.0;
-    const MIB: f64 = 1024.0 * KIB;
-    const GIB: f64 = 1024.0 * MIB;
-
-    let bytes_f = bytes as f64;
-    if bytes_f >= GIB {
-        format!("{:.2} GiB", bytes_f / GIB)
-    } else if bytes_f >= MIB {
-        format!("{:.2} MiB", bytes_f / MIB)
-    } else if bytes_f >= KIB {
-        format!("{:.2} KiB", bytes_f / KIB)
-    } else {
-        format!("{bytes} B")
-    }
-}
-
-fn make_model_params(gpu_layers: u32) -> LlamaModelParams {
-    let params = LlamaModelParams::default();
-
-    #[cfg(any(feature = "cuda", feature = "vulkan", feature = "metal"))]
-    {
-        if gpu_layers > 0 {
-            return params.with_n_gpu_layers(gpu_layers);
-        }
-    }
-
-    #[cfg(not(any(feature = "cuda", feature = "vulkan", feature = "metal")))]
-    let _ = gpu_layers;
-
-    params
 }
