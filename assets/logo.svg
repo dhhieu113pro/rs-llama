@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" fill="#0d1117"/>
+  <!-- Geometric RS monogram with cyan network nodes -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Abstract R/S interlocking shape in white/gray -->
+    <path d="M140 120 L140 280 Q140 320 180 320 L220 320 L280 200 L280 120 L240 120 L240 240 L200 320 L160 320 Q120 320 120 280 L120 120 Z" 
+          fill="#e6edf3" stroke="#e6edf3" stroke-width="8"/>
+    <!-- Simplified geometric RS -->
+    <path d="M160 100 C160 100 200 80 260 100 L300 140 L300 200 L260 240 L300 280 L300 360 L240 400 L160 380 L160 320 L220 340 L220 280 L180 250 L180 180 L220 150 L220 100 Z" 
+          fill="#c9d1d9"/>
+    <!-- Cyan accent bar -->
+    <rect x="230" y="160" width="28" height="140" rx="4" fill="#00e5ff"/>
+    <!-- Network nodes in cyan -->
+    <circle cx="320" cy="200" r="12" fill="#00e5ff"/>
+    <circle cx="360" cy="170" r="10" fill="#00e5ff"/>
+    <circle cx="380" cy="230" r="11" fill="#00e5ff"/>
+    <circle cx="340" cy="270" r="9" fill="#00e5ff"/>
+    <circle cx="300" cy="300" r="8" fill="#00e5ff"/>
+    <circle cx="280" cy="340" r="7" fill="#00e5ff"/>
+    <!-- Connections -->
+    <line x1="320" y1="200" x2="360" y2="170" stroke="#00e5ff" stroke-width="3"/>
+    <line x1="320" y1="200" x2="380" y2="230" stroke="#00e5ff" stroke-width="3"/>
+    <line x1="360" y1="170" x2="380" y2="230" stroke="#00e5ff" stroke-width="2.5"/>
+    <line x1="320" y1="200" x2="340" y2="270" stroke="#00e5ff" stroke-width="3"/>
+    <line x1="380" y1="230" x2="340" y2="270" stroke="#00e5ff" stroke-width="2.5"/>
+    <line x1="340" y1="270" x2="300" y2="300" stroke="#00e5ff" stroke-width="2.5"/>
+    <line x1="300" y1="300" x2="280" y2="340" stroke="#00e5ff" stroke-width="2"/>
+  </g>
+</svg>
