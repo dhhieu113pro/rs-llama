@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="rs-llama is a Rust library and CLI for running GGUF models through llama.cpp.">
+  <title>rs-llama — Run llama.cpp from Rust</title>
+  <link rel="stylesheet" href="./tokens.css">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="rs-llama home">
+      <span class="brand-mark" aria-hidden="true">rs</span>
+      <span>rs-llama</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary navigation">
+      <a href="#examples">Examples</a>
+      <a href="#platforms">Platforms</a>
+      <a href="https://github.com/dhhieu113pro/rs-llama">GitHub</a>
+    </nav>
+    <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle color theme" title="Toggle color theme">
+      <span aria-hidden="true" id="theme-icon">◐</span>
+    </button>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="hero-note">Rust binding + CLI for llama.cpp</p>
+        <h1 id="hero-title">Run llama.cpp from Rust.</h1>
+        <p class="hero-lede">Load GGUF models locally, download from Hugging Face, add vision with mmproj, and choose CPU, CUDA, Vulkan, or Metal.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#examples">Get started</a>
+          <a class="button button-secondary" href="https://github.com/dhhieu113pro/rs-llama">View on GitHub</a>
+        </div>
+        <ul class="hero-meta" aria-label="Project facts">
+          <li>MIT licensed</li>
+          <li>GGUF</li>
+          <li>Local inference</li>
+        </ul>
+      </div>
+
+      <article class="playground-card playground-card-hero" aria-labelledby="install-title">
+        <div class="example-head">
+          <div>
+            <p class="example-type">Cargo.toml</p>
+            <h2 id="install-title">Add the binding</h2>
+          </div>
+          <button class="copy-button" type="button" data-copy-target="install-code">Copy</button>
+        </div>
+        <pre><code id="install-code">[dependencies]
+rs-llama = { git = &quot;https://github.com/dhhieu113pro/rs-llama&quot; }</code></pre>
+      </article>
+    </section>
+
+    <section class="capability-rail" aria-label="Supported capabilities">
+      <span>CPU</span><span>CUDA</span><span>Vulkan</span><span>Metal</span><span>Vision</span><span>Hugging Face</span><span>Windows</span><span>Linux</span><span>macOS</span><span>Android / Termux</span>
+    </section>
+
+    <section class="architecture" aria-labelledby="architecture-title">
+      <div class="section-heading">
+        <h2 id="architecture-title">A thin Rust layer over llama.cpp.</h2>
+        <p>Keep the engine you know. Work through a Rust-native API and CLI.</p>
+      </div>
+      <ol class="architecture-flow">
+        <li><span>Rust app / CLI</span></li>
+        <li><span>rs-llama</span></li>
+        <li><span>LlamaEngine</span></li>
+        <li><span>llama.cpp / ggml</span></li>
+      </ol>
+    </section>
+
+    <section class="examples" id="examples" aria-labelledby="examples-title">
+      <div class="section-heading">
+        <h2 id="examples-title">Use the real interface.</h2>
+        <p>These examples mirror the repository usage instead of inventing a demo product.</p>
+      </div>
+
+      <article class="playground-card example-wide" aria-labelledby="library-example-title">
+        <div class="example-head">
+          <div>
+            <p class="example-type">Rust library</p>
+            <h3 id="library-example-title">Load, prompt, generate</h3>
+          </div>
+          <button class="copy-button" type="button" data-copy-target="library-code">Copy</button>
+        </div>
+        <pre><code id="library-code">use rs_llama::{download_huggingface_model_bundle, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
+
+fn main() -&gt; anyhow::Result&lt;()&gt; {
+    let bundle = download_huggingface_model_bundle(&amp;HfDownload::new(
+        &quot;mradermacher/SmolLM2-135M-Instruct-GGUF&quot;,
+        &quot;SmolLM2-135M-Instruct.Q4_K_M.gguf&quot;,
+    ))?;
+    let engine = LlamaEngine::load(EngineConfig::new(bundle.model_path).with_ctx_size(1024))?;
+    println!(&quot;{}&quot;, engine.generate(&amp;GenerateRequest::new(&quot;What is an LED lamp?&quot;).with_chat(true))?);
+    Ok(())
+}</code></pre>
+      </article>
+
+      <div class="example-pair">
+        <article class="playground-card" aria-labelledby="vision-example-title">
+          <div class="example-head">
+            <div>
+              <p class="example-type">Vision / mmproj</p>
+              <h3 id="vision-example-title">Add an image</h3>
+            </div>
+            <button class="copy-button" type="button" data-copy-target="vision-code">Copy</button>
+          </div>
+          <pre><code id="vision-code">cargo run --release -- --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF --hf-file SmolVLM-256M-Instruct-Q8_0.gguf --image ./photo.jpg --chat --prompt &quot;What is in this image?&quot;</code></pre>
+        </article>
+
+        <article class="playground-card" aria-labelledby="backend-example-title">
+          <div class="example-head">
+            <div>
+              <p class="example-type">Acceleration</p>
+              <h3 id="backend-example-title">Choose a backend</h3>
+            </div>
+            <button class="copy-button" type="button" data-copy-target="backend-code">Copy</button>
+          </div>
+          <pre><code id="backend-code">cargo build --release
+cargo build --release --features cuda
+cargo build --release --features vulkan
+cargo build --release --features metal</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="platforms" id="platforms" aria-labelledby="platforms-title">
+      <div class="section-heading">
+        <h2 id="platforms-title">Built and checked across platforms.</h2>
+        <p>Release assets and CI coverage come directly from the project README.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="platform-table">
+          <thead><tr><th scope="col">Platform</th><th scope="col">CI</th><th scope="col">Release / feature</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Linux x86_64</th><td data-label="CI">LED smoke + vision</td><td data-label="Release / feature"><code>rs-llama-linux-x86_64.tar.gz</code></td></tr>
+            <tr><th scope="row">Windows x86_64</th><td data-label="CI">LED smoke + vision</td><td data-label="Release / feature"><code>rs-llama-windows-x86_64.zip</code></td></tr>
+            <tr><th scope="row">macOS Apple Silicon</th><td data-label="CI">Metal + LED smoke + vision</td><td data-label="Release / feature"><code>rs-llama-macos-arm64.tar.gz</code></td></tr>
+            <tr><th scope="row">Android / Termux arm64</th><td data-label="CI">NDK build + emulator vision (x86_64)</td><td data-label="Release / feature"><code>rs-llama-android-arm64.tar.gz</code></td></tr>
+            <tr><th scope="row">NVIDIA CUDA</th><td data-label="CI">Linux compile</td><td data-label="Release / feature"><code>--features cuda</code></td></tr>
+            <tr><th scope="row">Vulkan</th><td data-label="CI">Linux compile</td><td data-label="Release / feature"><code>--features vulkan</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="closing" aria-labelledby="closing-title">
+      <h2 id="closing-title">Build local AI tools in Rust.</h2>
+      <p>Start from source, grab a release, or use the library directly from Git.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="https://github.com/dhhieu113pro/rs-llama">Open GitHub</a>
+        <a class="button button-secondary" href="https://github.com/dhhieu113pro/rs-llama/releases">See releases</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>rs-llama · MIT</span>
+    <span><a href="https://github.com/dhhieu113pro/rs-llama">GitHub</a> · <a href="https://github.com/dhhieu113pro/rs-llama/releases">Releases</a></span>
+  </footer>
+  <div class="sr-status" id="copy-status" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,91 @@
+:root {
+  color-scheme: light;
+  --color-paper: oklch(97% 0.012 55);
+  --color-paper-2: oklch(94% 0.014 55);
+  --color-paper-3: oklch(90% 0.016 55);
+  --color-ink: oklch(20% 0.012 45);
+  --color-ink-2: oklch(35% 0.014 45);
+  --color-muted: oklch(51% 0.016 48);
+  --color-rule: oklch(78% 0.016 50);
+  --color-rule-2: oklch(87% 0.012 50);
+  --color-accent: oklch(61% 0.16 42);
+  --color-accent-ink: oklch(18% 0.012 42);
+  --color-focus: oklch(64% 0.20 42);
+  --color-code: oklch(93% 0.018 52);
+  --color-success: oklch(58% 0.13 145);
+  --color-error: oklch(56% 0.16 25);
+
+  --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-display: clamp(2.8rem, 6vw, 5.6rem);
+
+  --radius-sm: 0.45rem;
+  --radius-md: 0.8rem;
+  --radius-lg: 1.25rem;
+  --rule-thin: 1px;
+  --dur-fast: 140ms;
+  --dur-normal: 220ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: oklch(16% 0.014 45);
+  --color-paper-2: oklch(20% 0.016 45);
+  --color-paper-3: oklch(25% 0.018 45);
+  --color-ink: oklch(94% 0.012 52);
+  --color-ink-2: oklch(81% 0.014 50);
+  --color-muted: oklch(68% 0.016 48);
+  --color-rule: oklch(35% 0.018 45);
+  --color-rule-2: oklch(27% 0.016 45);
+  --color-accent: oklch(69% 0.15 42);
+  --color-accent-ink: oklch(17% 0.012 42);
+  --color-focus: oklch(73% 0.19 42);
+  --color-code: oklch(20% 0.018 45);
+  --color-success: oklch(70% 0.13 145);
+  --color-error: oklch(70% 0.15 25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-paper: oklch(16% 0.014 45);
+    --color-paper-2: oklch(20% 0.016 45);
+    --color-paper-3: oklch(25% 0.018 45);
+    --color-ink: oklch(94% 0.012 52);
+    --color-ink-2: oklch(81% 0.014 50);
+    --color-muted: oklch(68% 0.016 48);
+    --color-rule: oklch(35% 0.018 45);
+    --color-rule-2: oklch(27% 0.016 45);
+    --color-accent: oklch(69% 0.15 42);
+    --color-accent-ink: oklch(17% 0.012 42);
+    --color-focus: oklch(73% 0.19 42);
+    --color-code: oklch(20% 0.018 45);
+    --color-success: oklch(70% 0.13 145);
+    --color-error: oklch(70% 0.15 25);
+  }
+}

@@ -2,6 +2,7 @@
 
 A Rust **library and CLI** for running GGUF models through [llama.cpp](https://github.com/ggml-org/llama.cpp).
 
+Website: [dhhieu113pro.github.io/rs-llama](https://dhhieu113pro.github.io/rs-llama/)  
 GitHub: [dhhieu113pro/rs-llama](https://github.com/dhhieu113pro/rs-llama)  
 Releases: [github.com/dhhieu113pro/rs-llama/releases](https://github.com/dhhieu113pro/rs-llama/releases)
 

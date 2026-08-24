@@ -154,13 +154,13 @@ jobs:
             spirv-tools \
             mesa-vulkan-drivers
 
-      - name: Install CUDA compiler only
+      - name: Install CUDA build toolkit
         if: matrix.features == 'cuda'
-        uses: Jimver/cuda-toolkit@v0.2.24
+        uses: Jimver/cuda-toolkit@v0.2.36
         with:
-          cuda: "12.4.1"
+          cuda: "12.6.3"
           method: network
-          sub-packages: '["nvcc"]'
+          sub-packages: '["compiler", "libraries-dev"]'
           use-github-cache: true
 
       - name: Cache Cargo
