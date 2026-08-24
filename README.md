@@ -1,50 +1,69 @@
 # rs-llama
 
-A Rust **library and CLI** for running GGUF language models through `llama.cpp` using the maintained [`llama-cpp-2`](https://crates.io/crates/llama-cpp-2) bindings.
+A Rust **library and CLI** for running GGUF models through [llama.cpp](https://github.com/ggml-org/llama.cpp).
 
-GitHub repo: [dhhieu113pro/rs-llama](https://github.com/dhhieu113pro/rs-llama)  
-Crates.io name: **`rs-llama`**
+It does **not** use `llama-cpp-2`. Inference goes through our crate `llama-sys`, which clones llama.cpp at build time, compiles it with CMake, and binds `llama.h`.
 
-## Install
+GitHub: [dhhieu113pro/rs-llama](https://github.com/dhhieu113pro/rs-llama)  
+Crate name: **`rs-llama`**
 
-After the first publish:
+## Architecture
 
-```bash
-cargo add rs-llama
-cargo install rs-llama
+```text
+rs-llama CLI + library
+    |
+    +--> Hugging Face download / cache
+    |      + auto-detect mmproj
+    v
+LlamaEngine
+    |
+    v
+llama-sys          bindgen + CMake (this repo)
+    |
+    v
+llama.cpp / ggml   cloned at build time
 ```
 
-Until it is published, use Git:
+Text generation follows llama.cpp `examples/simple/simple.cpp`:
+
+`load model → tokenize → llama_decode → llama_sampler_sample → token_to_piece`
+
+## Requirements
+
+- Rust (`rustup`, `cargo`, `rustc`)
+- Git (build clones `ggml-org/llama.cpp`)
+- C/C++ compiler
+- CMake
+- Clang / libclang (`bindgen`)
+
+Optional: pin a local tree
+
+```bash
+export LLAMA_CPP_SRC=/path/to/llama.cpp
+# or
+export LLAMA_CPP_REV=master
+```
+
+## Install from Git
 
 ```toml
 [dependencies]
 rs-llama = { git = "https://github.com/dhhieu113pro/rs-llama" }
 ```
 
-Optional GPU features:
-
-```toml
-rs-llama = { git = "https://github.com/dhhieu113pro/rs-llama", features = ["cuda"] }
-```
-
-Example:
-
 ```rust
 use rs_llama::{download_huggingface_model_bundle, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
 
 fn main() -> anyhow::Result<()> {
     let bundle = download_huggingface_model_bundle(&HfDownload::new(
-        "ggml-org/SmolVLM-256M-Instruct-GGUF",
-        "SmolVLM-256M-Instruct-Q8_0.gguf",
+        "mradermacher/SmolLM2-135M-Instruct-GGUF",
+        "SmolLM2-135M-Instruct.Q4_K_M.gguf",
     ))?;
 
-    let mut config = EngineConfig::new(bundle.model_path).with_ctx_size(1024);
-    if let Some(mmproj) = bundle.mmproj_path {
-        config = config.with_mmproj(mmproj);
-    }
-
-    let engine = LlamaEngine::load(config)?;
-    let text = engine.generate(&GenerateRequest::new("What is in this picture?"))?;
+    let engine = LlamaEngine::load(EngineConfig::new(bundle.model_path).with_ctx_size(1024))?;
+    let text = engine.generate(
+        &GenerateRequest::new("What is an LED lamp?").with_chat(true).with_max_tokens(64),
+    )?;
     println!("{text}");
     Ok(())
 }
@@ -53,85 +72,24 @@ fn main() -> anyhow::Result<()> {
 Public API:
 
 - `LlamaEngine::load` / `generate` / `generate_to_writer` / `generate_with_callback`
-- `EngineConfig` and `GenerateRequest`
+- `EngineConfig`, `GenerateRequest` (`with_chat`, `with_image`)
 - `HfDownload`, `download_huggingface_model`, `download_huggingface_model_bundle`
 - `resolve_model_path`, `resolve_model_files`, `ResolvedModel`
 
-The consuming project still needs a C/C++ compiler, CMake, and Clang/libclang because `llama.cpp` is compiled as part of the build.
-
-## Vision / mmproj
-
-When you download from Hugging Face, `rs-llama` lists the repo and **automatically downloads `mmproj*.gguf`** if one exists next to the language model.
-
-```bash
-cargo run --release -- \
-  --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF \
-  --hf-file SmolVLM-256M-Instruct-Q8_0.gguf \
-  --image ./photo.jpg \
-  --prompt "What is LED lamp in this image?"
-```
-
-It prefers `mmproj-F16` / `FP16` / `BF16` over quantized projectors, and prefers a projector in the same folder as the model file.
-
-```bash
-# explicit projector file in the repo
---hf-mmproj mmproj-F16.gguf
-
-# local projector
---mmproj ./models/mmproj-F16.gguf
-
-# skip auto download
---no-mmproj
-```
-
-For a local GGUF, it also looks in the same directory for `*mmproj*.gguf`.
-
-`llama-cpp-2` 0.1.154 does not expose llama.cpp `mtmd` image encoding yet, so the projector is downloaded and attached. Pixel-level CLIP encode will land when the binding adds `mtmd`.
-
-## Publish to crates.io
-
-Name `rs-llama` is currently free. From your machine:
-
-```bash
-cargo login
-cargo publish --dry-run
-cargo publish
-```
-
-## Requirements
-
-- Rust toolchain (`rustup`, `cargo`, `rustc`)
-- C/C++ compiler
-- CMake
-- Clang/libclang for `bindgen`
-
 ## Build
-
-### CPU
 
 ```bash
 cargo build --release
-```
-
-### NVIDIA CUDA
-
-```bash
 cargo build --release --features cuda
-```
-
-### Vulkan
-
-```bash
 cargo build --release --features vulkan
-```
-
-### Apple Metal
-
-```bash
 cargo build --release --features metal
 ```
 
-## Run a local GGUF model
+The first build is slow: it clones and compiles llama.cpp.
+
+## Run
+
+### Local GGUF
 
 ```bash
 cargo run --release -- \
@@ -140,37 +98,77 @@ cargo run --release -- \
   --max-tokens 128
 ```
 
-## Download and run a model from Hugging Face
+### Hugging Face + instruct chat (recommended)
+
+Instruct models need `--chat`. Without it they often continue the question instead of answering.
 
 ```bash
 cargo run --release -- \
   --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
   --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
-  --prompt "Hello from Rust!" \
-  --max-tokens 64
+  --chat \
+  --no-echo-prompt \
+  --prompt "What is an LED lamp?" \
+  --max-tokens 80
 ```
 
-By default, downloaded models are stored in `./models/`.
+`--chat` wraps ChatML:
 
-## Private or gated Hugging Face models
+```text
+<|im_start|>system
+You are a helpful assistant. Answer the question in one or two short sentences.
+<|im_end|>
+<|im_start|>user
+What is an LED lamp?
+<|im_end|>
+<|im_start|>assistant
+```
 
-The application checks `HF_TOKEN` then `HUGGING_FACE_HUB_TOKEN`.
+`--no-echo-prompt` prints only the model answer.
+
+Downloaded files go to `./models/`.
+
+### Private or gated repos
 
 ```bash
 export HF_TOKEN=hf_xxx
 ```
 
-## GPU offload
+Also accepts `HUGGING_FACE_HUB_TOKEN`.
+
+### GPU offload
 
 ```bash
 cargo run --release --features cuda -- \
   --model ./models/model.gguf \
   --prompt "Hello" \
-  --max-tokens 128 \
   --gpu-layers 999
 ```
 
-## CLI options
+## Vision / mmproj
+
+Hugging Face downloads list the repo and **auto-download `mmproj*.gguf`** when present (prefers F16/FP16/BF16, same folder as the model).
+
+```bash
+cargo run --release -- \
+  --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF \
+  --hf-file SmolVLM-256M-Instruct-Q8_0.gguf \
+  --image ./photo.jpg \
+  --chat \
+  --prompt "What is an LED lamp in this image?"
+```
+
+```bash
+--hf-mmproj mmproj-F16.gguf     # file inside the repo
+--mmproj ./models/mmproj-F16.gguf
+--no-mmproj                     # skip auto download
+```
+
+Local `--model` also scans the same directory for `*mmproj*.gguf`.
+
+Pixel encode through llama.cpp `mtmd` is not wired yet. The projector is downloaded and attached; CLIP encode is the next step.
+
+## CLI flags
 
 ```text
 -m, --model <MODEL>
@@ -180,6 +178,8 @@ cargo run --release --features cuda -- \
 --mmproj <MMPROJ>
 --no-mmproj
 --image <IMAGE>
+--chat
+--no-echo-prompt
 --hf-revision <HF_REVISION>
 --model-dir <MODEL_DIR>
 --hf-force-download
@@ -196,21 +196,22 @@ cargo run --release -- --help
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` builds the `rs-llama` binary and smoke-tests real GGUF inference on Linux, Windows, and macOS.
+CI and Release run on **Linux, Windows, and macOS**:
 
-## Architecture
+1. Build `rs-llama` (compiles llama.cpp via `llama-sys`)
+2. `cargo test --release`
+3. Smoke test: download SmolLM2-135M-Instruct Q4_K_M and ask **What is an LED lamp?** with `--chat --no-echo-prompt`
+4. Fail if the answer does not mention led / light / diode / lamp / electric / bulb
+
+Release packages binaries only after those tests pass. A GitHub Release is created only on tags `v*`.
+
+## Workspace
 
 ```text
-Your Rust project
-    |
-    v
-rs_llama library  +  rs-llama CLI
-    |
-    +--> Hugging Face downloader/cache
-    |      + auto mmproj detect/download
-    v
-llama-cpp-2
-    |
-    v
-llama.cpp / ggml
+rs-llama/
+  src/                 CLI + library
+  crates/llama-sys/    FFI to llama.cpp
+  .github/workflows/   CI + gated release
 ```
+
+See [docs/LLAMA-CPP-2.md](docs/LLAMA-CPP-2.md) for the old wrapper notes and why we build llama.cpp directly.
