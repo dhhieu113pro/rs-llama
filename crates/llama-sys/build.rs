@@ -50,11 +50,13 @@ fn build_llama(src: &Path) -> PathBuf {
         .profile("Release")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("GGML_NATIVE", "OFF")
+        .define("GGML_CCACHE", "OFF")
         .define("LLAMA_BUILD_TESTS", "OFF")
         .define("LLAMA_BUILD_TOOLS", "OFF")
         .define("LLAMA_BUILD_EXAMPLES", "OFF")
         .define("LLAMA_BUILD_SERVER", "OFF")
         .define("LLAMA_BUILD_COMMON", "OFF")
+        .define("LLAMA_BUILD_APP", "OFF")
         .define("LLAMA_CURL", "OFF");
 
     if cfg!(feature = "cuda") {
