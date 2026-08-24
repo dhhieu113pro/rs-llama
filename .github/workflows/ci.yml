@@ -117,7 +117,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           Path('testdata').mkdir(exist_ok=True)
-          # 1x1 yellow PNG
           Path('testdata/led-lamp.png').write_bytes(bytes.fromhex(
               '89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de'
               '0000000c4944415408d763f8ff33c00000030101d5d45f8b0000000049454e44ae426082'
@@ -201,3 +200,61 @@ jobs:
 
       - name: Compile backend
         run: cargo build --release --features ${{ matrix.features }}
+
+  android:
+    name: Build Android arm64 (Termux target)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use latest stable Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add aarch64-linux-android
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake clang libclang-dev
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+          add-to-path: false
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Refresh lockfile after crate rename
+        run: cargo generate-lockfile
+
+      - name: Cross-compile aarch64-linux-android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK: ${{ steps.ndk.outputs.ndk-path }}
+        run: cargo ndk -t arm64-v8a -p 28 build --release --bin rs-llama
+
+      - name: Show Android binary
+        run: |
+          find target -name rs-llama -type f | tee android-bins.txt
+          test -s android-bins.txt
+
+  termux-scripts:
+    name: Check Termux scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax-check Termux scripts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          bash -n scripts/termux-build.sh
+          bash -n scripts/termux-smoke.sh
+          shellcheck -e SC2164,SC1091 scripts/termux-build.sh scripts/termux-smoke.sh
+          test -f scripts/termux-build.sh
+          test -f scripts/termux-smoke.sh
