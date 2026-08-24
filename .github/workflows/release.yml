@@ -157,7 +157,8 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           ANDROID_NDK: ${{ steps.ndk.outputs.ndk-path }}
-        run: cargo ndk -t arm64-v8a -p 28 build --release --bin rs-llama
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: cargo ndk -t arm64-v8a --platform 28 build --release --bin rs-llama
       - name: Upload Android binary
         uses: actions/upload-artifact@v4
         with:
