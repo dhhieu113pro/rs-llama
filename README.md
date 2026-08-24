@@ -5,7 +5,42 @@ A Rust **library and CLI** for running GGUF models through [llama.cpp](https://g
 It does **not** use `llama-cpp-2`. Inference goes through our crate `llama-sys`, which clones llama.cpp at build time, compiles it with CMake, and binds `llama.h`.
 
 GitHub: [dhhieu113pro/rs-llama](https://github.com/dhhieu113pro/rs-llama)  
+Releases: [github.com/dhhieu113pro/rs-llama/releases](https://github.com/dhhieu113pro/rs-llama/releases)  
 Crate name: **`rs-llama`**
+
+## Releases
+
+Latest published tag: **[v0.1.0](https://github.com/dhhieu113pro/rs-llama/releases/tag/v0.1.0)** (22 Aug 2026).
+
+| Platform | In v0.1.0 | Asset |
+| --- | --- | --- |
+| Linux x86_64 CPU | yes | `llama-rust-linux-x86_64.tar.gz` |
+| Windows x86_64 CPU | yes | `llama-rust-windows-x86_64.zip` |
+| macOS (GitHub `macos-latest`, Apple Silicon) | yes | `llama-rust-macos.tar.gz` |
+| Linux aarch64 | no | — |
+| Android / Termux | no binary on the release | cross-compile in CI only |
+| CUDA / Vulkan prebuilt | no | compile from source |
+
+Those v0.1.0 files still use the old `llama-rust-*` names. The next `v*` tag will upload:
+
+- `rs-llama-linux-x86_64.tar.gz`
+- `rs-llama-windows-x86_64.zip`
+- `rs-llama-macos.tar.gz`
+
+A GitHub Release is created **only on tags `v*`**, and only after Linux + Windows + macOS tests pass (text smoke + vision mmproj smoke).
+
+```bash
+# Linux
+curl -L -o rs-llama.tar.gz https://github.com/dhhieu113pro/rs-llama/releases/download/v0.1.0/llama-rust-linux-x86_64.tar.gz
+tar -xzf rs-llama.tar.gz
+
+# macOS
+curl -L -o rs-llama.tar.gz https://github.com/dhhieu113pro/rs-llama/releases/download/v0.1.0/llama-rust-macos.tar.gz
+tar -xzf rs-llama.tar.gz
+
+# Windows
+# download llama-rust-windows-x86_64.zip from the release page
+```
 
 ## Architecture
 
@@ -24,15 +59,11 @@ llama-sys          bindgen + CMake (this repo)
 llama.cpp / ggml   cloned at build time
 ```
 
-Text generation follows llama.cpp `examples/simple/simple.cpp`.
-
 ## Requirements
 
 - Rust (`rustup`, `cargo`, `rustc`)
 - Git (build clones `ggml-org/llama.cpp`)
-- C/C++ compiler
-- CMake
-- Clang / libclang (`bindgen`)
+- C/C++ compiler, CMake, Clang / libclang
 
 ```bash
 export LLAMA_CPP_SRC=/path/to/llama.cpp
@@ -72,17 +103,10 @@ fn main() -> anyhow::Result<()> {
 cargo build --release
 ```
 
-CI smoke-tests this on Linux, Windows, and macOS.
-
 ### NVIDIA CUDA
 
 ```bash
 cargo build --release --features cuda
-```
-
-CI compiles this on Linux. GitHub-hosted runners have no NVIDIA GPU, so CUDA inference is not run there.
-
-```bash
 cargo run --release --features cuda -- --model ./models/model.gguf --gpu-layers 999 --prompt "Hello"
 ```
 
@@ -92,31 +116,30 @@ cargo run --release --features cuda -- --model ./models/model.gguf --gpu-layers 
 cargo build --release --features vulkan
 ```
 
-CI compiles this on Linux (`libvulkan-dev`).
-
 ### Apple Metal
 
 ```bash
 cargo build --release --features metal
 ```
 
-CI builds and smoke-tests this on `macos-latest`. `llama-sys` enables `GGML_METAL=ON` on macOS.
+### Android / Termux
 
-## Run a local GGUF model
+See [docs/ANDROID.md](docs/ANDROID.md). CI cross-compiles `aarch64-linux-android`. On a phone:
+
+```bash
+bash scripts/termux-build.sh
+bash scripts/termux-smoke.sh
+```
+
+## Run
+
+Instruct models need `--chat`.
 
 ```bash
 cargo run --release -- --model ./models/model.gguf --chat --prompt "What is an LED lamp?"
-```
 
-## Download from Hugging Face
-
-Instruct models need `--chat` or they continue the question instead of answering.
-
-```bash
 cargo run --release -- --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf --chat --no-echo-prompt --prompt "What is an LED lamp?"
 ```
-
-### Private or gated repos
 
 ```bash
 export HF_TOKEN=hf_xxx
@@ -124,19 +147,13 @@ export HF_TOKEN=hf_xxx
 
 ## Vision / mmproj
 
-Hugging Face downloads auto-fetch `mmproj*.gguf` when present.
+HF downloads auto-fetch `mmproj*.gguf` when present. CI runs this on Linux, Windows, and macOS.
 
 ```bash
 cargo run --release -- --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF --hf-file SmolVLM-256M-Instruct-Q8_0.gguf --image ./photo.jpg --chat --prompt "What is in this image?"
 ```
 
-```bash
---hf-mmproj mmproj-F16.gguf
---mmproj ./models/mmproj-F16.gguf
---no-mmproj
-```
-
-`mtmd` pixel encode is not wired yet. The projector is downloaded and attached.
+`mtmd` pixel encode is not wired yet.
 
 ## CLI flags
 
@@ -153,20 +170,12 @@ cargo run --release -- --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF --hf-file S
 
 | Check | Where | What |
 | --- | --- | --- |
-| CPU + real GGUF smoke | Linux, Windows, macOS | Ask **What is an LED lamp?** |
+| CPU + GGUF smoke | Linux, Windows, macOS | **What is an LED lamp?** |
+| Vision mmproj + `--image` | Linux, Windows, macOS | SmolVLM + tiny PNG |
 | Metal | macOS | `--features metal` + smoke |
-| Vulkan | Linux | compile `--features vulkan` |
-| CUDA | Linux | compile `--features cuda` |
+| Vulkan | Linux | compile |
+| CUDA | Linux | compile nvcc only |
+| Android arm64 | Linux NDK | `cargo ndk -t arm64-v8a` |
+| Termux scripts | Linux | shellcheck |
 
-Smoke fails if the answer does not mention led / light / diode / lamp / electric / bulb.
-
-Release packages binaries only after CPU tests pass. GitHub Release only on tags `v*`.
-
-## Workspace
-
-```text
-rs-llama/
-  src/                 CLI + library
-  crates/llama-sys/    FFI to llama.cpp
-  .github/workflows/   CI + gated release
-```
+Release packages the three desktop CPU binaries only after those desktop tests pass.
