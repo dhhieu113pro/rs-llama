@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use rs_llama::{resolve_model_path, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
+use rs_llama::{resolve_model_files, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Run a GGUF model with llama.cpp from Rust")]
@@ -12,13 +12,29 @@ struct Args {
     #[arg(short, long)]
     model: Option<PathBuf>,
 
-    /// Hugging Face repository, for example: mradermacher/SmolLM2-135M-Instruct-GGUF.
+    /// Hugging Face repository, for example: ggml-org/SmolVLM-Instruct-GGUF.
     #[arg(long)]
     hf_repo: Option<String>,
 
     /// GGUF file inside the Hugging Face repository.
     #[arg(long)]
     hf_file: Option<String>,
+
+    /// Explicit mmproj filename inside the Hugging Face repository.
+    #[arg(long)]
+    hf_mmproj: Option<String>,
+
+    /// Do not auto-download mmproj from the Hugging Face repo.
+    #[arg(long, default_value_t = false)]
+    no_mmproj: bool,
+
+    /// Local multimodal projector GGUF (mmproj).
+    #[arg(long)]
+    mmproj: Option<PathBuf>,
+
+    /// Optional image for vision models.
+    #[arg(long)]
+    image: Option<PathBuf>,
 
     /// Hugging Face revision/branch/tag.
     #[arg(long, default_value = "main")]
@@ -75,19 +91,30 @@ fn run() -> Result<()> {
             model_dir: args.model_dir.clone(),
             force: args.hf_force_download,
             show_progress: true,
+            mmproj_file: args.hf_mmproj.clone(),
+            auto_mmproj: !args.no_mmproj,
         }),
         _ => None,
     };
 
-    let model_path = resolve_model_path(args.model.as_deref(), hf.as_ref())?;
-    let engine = LlamaEngine::load(
-        EngineConfig::new(model_path)
-            .with_ctx_size(args.ctx_size)
-            .with_threads(args.threads)
-            .with_gpu_layers(args.gpu_layers),
-    )?;
+    let resolved = resolve_model_files(args.model.as_deref(), hf.as_ref(), args.mmproj.as_deref())?;
+    if let Some(mmproj) = &resolved.mmproj_path {
+        eprintln!("Vision mmproj: {}", mmproj.display());
+    }
 
-    let request = GenerateRequest::new(&args.prompt).with_max_tokens(args.max_tokens);
+    let mut config = EngineConfig::new(resolved.model_path)
+        .with_ctx_size(args.ctx_size)
+        .with_threads(args.threads)
+        .with_gpu_layers(args.gpu_layers);
+    if let Some(mmproj) = resolved.mmproj_path {
+        config = config.with_mmproj(mmproj);
+    }
+    let engine = LlamaEngine::load(config)?;
+
+    let mut request = GenerateRequest::new(&args.prompt).with_max_tokens(args.max_tokens);
+    if let Some(image) = args.image {
+        request = request.with_image(image);
+    }
 
     print!("{}", args.prompt);
     io::stdout().flush()?;

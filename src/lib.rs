@@ -5,5 +5,8 @@
 mod download;
 mod engine;
 
-pub use download::{download_huggingface_model, resolve_model_path, HfDownload};
+pub use download::{
+    download_huggingface_model, download_huggingface_model_bundle, resolve_model_files,
+    resolve_model_path, HfDownload, ResolvedModel,
+};
 pub use engine::{EngineConfig, GenerateRequest, LlamaEngine};

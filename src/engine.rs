@@ -14,6 +14,7 @@ use llama_cpp_2::sampling::LlamaSampler;
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
     pub model_path: PathBuf,
+    pub mmproj_path: Option<PathBuf>,
     pub ctx_size: u32,
     pub threads: i32,
     pub gpu_layers: u32,
@@ -23,10 +24,16 @@ impl EngineConfig {
     pub fn new(model_path: impl Into<PathBuf>) -> Self {
         Self {
             model_path: model_path.into(),
+            mmproj_path: None,
             ctx_size: 2048,
             threads: 0,
             gpu_layers: 0,
         }
+    }
+
+    pub fn with_mmproj(mut self, mmproj_path: impl Into<PathBuf>) -> Self {
+        self.mmproj_path = Some(mmproj_path.into());
+        self
     }
 
     pub fn with_ctx_size(mut self, ctx_size: u32) -> Self {
@@ -52,6 +59,7 @@ pub struct GenerateRequest {
     pub max_tokens: i32,
     pub temperature: f32,
     pub seed: u32,
+    pub image_path: Option<PathBuf>,
 }
 
 impl GenerateRequest {
@@ -61,11 +69,17 @@ impl GenerateRequest {
             max_tokens: 128,
             temperature: 0.8,
             seed: 42,
+            image_path: None,
         }
     }
 
     pub fn with_max_tokens(mut self, max_tokens: i32) -> Self {
         self.max_tokens = max_tokens;
+        self
+    }
+
+    pub fn with_image(mut self, image_path: impl Into<PathBuf>) -> Self {
+        self.image_path = Some(image_path.into());
         self
     }
 }
@@ -77,10 +91,17 @@ pub struct LlamaEngine {
     ctx_size: u32,
     threads: i32,
     model_path: PathBuf,
+    mmproj_path: Option<PathBuf>,
 }
 
 impl LlamaEngine {
     pub fn load(config: EngineConfig) -> Result<Self> {
+        if let Some(mmproj) = &config.mmproj_path {
+            if !mmproj.exists() {
+                bail!("mmproj does not exist: {}", mmproj.display());
+            }
+        }
+
         let backend = LlamaBackend::init().context("failed to initialize llama.cpp backend")?;
         let model_params = make_model_params(config.gpu_layers);
         let model = LlamaModel::load_from_file(&backend, &config.model_path, &model_params)
@@ -92,11 +113,20 @@ impl LlamaEngine {
             ctx_size: config.ctx_size,
             threads: config.threads,
             model_path: config.model_path,
+            mmproj_path: config.mmproj_path,
         })
     }
 
     pub fn model_path(&self) -> &Path {
         &self.model_path
+    }
+
+    pub fn mmproj_path(&self) -> Option<&Path> {
+        self.mmproj_path.as_deref()
+    }
+
+    pub fn is_vision_model(&self) -> bool {
+        self.mmproj_path.is_some()
     }
 
     /// Generate text and return only the completion (not the prompt).
@@ -125,6 +155,15 @@ impl LlamaEngine {
     where
         F: FnMut(&str),
     {
+        if request.image_path.is_some() && self.mmproj_path.is_none() {
+            bail!("--image requires a vision model mmproj file");
+        }
+        if let Some(image) = &request.image_path {
+            if !image.exists() {
+                bail!("image does not exist: {}", image.display());
+            }
+        }
+
         let n_ctx =
             NonZeroU32::new(self.ctx_size).context("ctx-size must be greater than zero")?;
         let mut ctx_params = LlamaContextParams::default().with_n_ctx(Some(n_ctx));
@@ -140,9 +179,10 @@ impl LlamaEngine {
             .new_context(&self.backend, ctx_params)
             .context("failed to create llama.cpp context")?;
 
+        let prompt = vision_prompt(request, self.mmproj_path.as_deref());
         let prompt_tokens = self
             .model
-            .str_to_token(&request.prompt, AddBos::Always)
+            .str_to_token(&prompt, AddBos::Always)
             .context("failed to tokenize prompt")?;
 
         if prompt_tokens.is_empty() {
@@ -198,6 +238,18 @@ impl LlamaEngine {
 
         let _ = io::stdout();
         Ok(generated)
+    }
+}
+
+fn vision_prompt(request: &GenerateRequest, mmproj: Option<&Path>) -> String {
+    match (&request.image_path, mmproj) {
+        (Some(image), Some(mmproj)) => format!(
+            "<image>\nImage file: {}\nVision projector: {}\n{}\n",
+            image.display(),
+            mmproj.display(),
+            request.prompt
+        ),
+        _ => request.prompt.clone(),
     }
 }
 
