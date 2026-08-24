@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="175" height="20" role="img" aria-label="GPU: CUDA | Vulkan | Metal">
+  <title>GPU: CUDA | Vulkan | Metal</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#fff" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="175" height="20" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="40" height="20" fill="#21262d"/>
+    <rect x="40" width="135" height="20" fill="#3fb950"/>
+    <rect width="175" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="11">
+    <text x="20" y="14" fill="#fff">GPU</text>
+    <text x="107" y="14" fill="#fff">CUDA | Vulkan | Metal</text>
+  </g>
+</svg>
