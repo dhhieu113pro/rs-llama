@@ -49,6 +49,7 @@ cat vision-termux-stderr.txt
 cat vision-termux-output.txt
 grep -qiE 'mmproj|vision' vision-termux-stderr.txt
 test -s vision-termux-output.txt
-ls models | grep -qi mmproj
+MMPROJ_PATH="$(find models -maxdepth 1 -type f -iname '*mmproj*' -print -quit 2>/dev/null || true)"
+test -n "$MMPROJ_PATH"
 
 echo "Termux text + vision smoke passed"
