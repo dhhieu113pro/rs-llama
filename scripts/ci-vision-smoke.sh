@@ -41,7 +41,8 @@ fi
 
 test -s vision-output.txt
 
-if ! ls models | grep -qi mmproj; then
+MMPROJ_PATH="$(find models -maxdepth 1 -type f -iname '*mmproj*' -print -quit 2>/dev/null || true)"
+if [ -z "$MMPROJ_PATH" ]; then
   echo "No mmproj file cached in models/"
   ls -lah models || true
   exit 1
