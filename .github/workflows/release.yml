@@ -22,15 +22,15 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
-            artifact: rs-llama-x86_64-unknown-linux-gnu
+            artifact: rs-llama-linux-x86_64
             binary: rs-llama
           - name: Windows x64
             os: windows-latest
-            artifact: rs-llama-x86_64-pc-windows-msvc
+            artifact: rs-llama-windows-x86_64
             binary: rs-llama.exe
           - name: macOS arm64
             os: macos-latest
-            artifact: rs-llama-aarch64-apple-darwin
+            artifact: rs-llama-macos-arm64
             binary: rs-llama
 
     runs-on: ${{ matrix.os }}
@@ -130,7 +130,7 @@ jobs:
           if-no-files-found: error
 
   android:
-    name: Build Android aarch64
+    name: Build Android arm64
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -161,7 +161,7 @@ jobs:
       - name: Upload Android binary
         uses: actions/upload-artifact@v4
         with:
-          name: tested-rs-llama-aarch64-linux-android
+          name: tested-rs-llama-android-arm64
           path: target/aarch64-linux-android/release/rs-llama
           if-no-files-found: error
 
@@ -195,16 +195,16 @@ jobs:
             tar -C pack -czf "dist/${artifact}.tar.gz" "${artifact}"
           }
 
-          pack_unix rs-llama-x86_64-unknown-linux-gnu
-          pack_unix rs-llama-aarch64-apple-darwin
-          pack_unix rs-llama-aarch64-linux-android
+          pack_unix rs-llama-linux-x86_64
+          pack_unix rs-llama-macos-arm64
+          pack_unix rs-llama-android-arm64
 
-          mkdir -p pack/rs-llama-x86_64-pc-windows-msvc
-          cp bins/tested-rs-llama-x86_64-pc-windows-msvc/rs-llama.exe pack/rs-llama-x86_64-pc-windows-msvc/rs-llama.exe
+          mkdir -p pack/rs-llama-windows-x86_64
+          cp bins/tested-rs-llama-windows-x86_64/rs-llama.exe pack/rs-llama-windows-x86_64/rs-llama.exe
           python3 - <<'PY'
           import zipfile
-          with zipfile.ZipFile('dist/rs-llama-x86_64-pc-windows-msvc.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
-              zf.write('pack/rs-llama-x86_64-pc-windows-msvc/rs-llama.exe', 'rs-llama-x86_64-pc-windows-msvc/rs-llama.exe')
+          with zipfile.ZipFile('dist/rs-llama-windows-x86_64.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
+              zf.write('pack/rs-llama-windows-x86_64/rs-llama.exe', 'rs-llama-windows-x86_64/rs-llama.exe')
           PY
 
           (cd dist && sha256sum * > SHA256SUMS)
@@ -216,10 +216,10 @@ jobs:
         with:
           name: rs-llama-packages
           path: |
-            dist/rs-llama-x86_64-unknown-linux-gnu.tar.gz
-            dist/rs-llama-aarch64-apple-darwin.tar.gz
-            dist/rs-llama-x86_64-pc-windows-msvc.zip
-            dist/rs-llama-aarch64-linux-android.tar.gz
+            dist/rs-llama-linux-x86_64.tar.gz
+            dist/rs-llama-macos-arm64.tar.gz
+            dist/rs-llama-windows-x86_64.zip
+            dist/rs-llama-android-arm64.tar.gz
             dist/SHA256SUMS
           if-no-files-found: error
 

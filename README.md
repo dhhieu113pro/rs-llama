@@ -9,19 +9,19 @@ Releases: [github.com/dhhieu113pro/rs-llama/releases](https://github.com/dhhieu1
 
 | Platform | CI | Release asset |
 | --- | --- | --- |
-| Linux x86_64 | build + LED smoke + vision | `rs-llama-x86_64-unknown-linux-gnu.tar.gz` |
-| Windows x86_64 | build + LED smoke + vision | `rs-llama-x86_64-pc-windows-msvc.zip` |
-| macOS Apple Silicon | Metal build + LED smoke + vision | `rs-llama-aarch64-apple-darwin.tar.gz` |
-| Android / Termux arm64 | NDK cross-compile | `rs-llama-aarch64-linux-android.tar.gz` |
-| NVIDIA CUDA | Linux compile | source `--features cuda` |
-| Vulkan | Linux compile | source `--features vulkan` |
+| Linux x86_64 | build + LED smoke + vision | `rs-llama-linux-x86_64.tar.gz` |
+| Windows x86_64 | build + LED smoke + vision | `rs-llama-windows-x86_64.zip` |
+| macOS Apple Silicon | Metal + LED smoke + vision | `rs-llama-macos-arm64.tar.gz` |
+| Android / Termux arm64 | NDK cross-compile | `rs-llama-android-arm64.tar.gz` |
+| NVIDIA CUDA | Linux compile | `--features cuda` |
+| Vulkan | Linux compile | `--features vulkan` |
 
-Tags `v*` publish the four binaries plus `SHA256SUMS` after those jobs pass.
+Tags `v*` publish those four binaries plus `SHA256SUMS`.
 
 ```bash
-curl -L -O https://github.com/dhhieu113pro/rs-llama/releases/latest/download/rs-llama-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf rs-llama-x86_64-unknown-linux-gnu.tar.gz
-./rs-llama-x86_64-unknown-linux-gnu/rs-llama --help
+curl -L -O https://github.com/dhhieu113pro/rs-llama/releases/latest/download/rs-llama-linux-x86_64.tar.gz
+tar -xzf rs-llama-linux-x86_64.tar.gz
+./rs-llama-linux-x86_64/rs-llama --help
 ```
 
 ## Architecture
