@@ -1,0 +1,26 @@
+{
+  "bootstrap-sha": "7181baf31edabc80dd9a3cd9883b6c4dfcd762c9",
+  "packages": {
+    ".": {
+      "release-type": "rust",
+      "component": "rs-llama",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "crates/llama-sys": {
+      "release-type": "rust",
+      "component": "rs-llama-sys",
+      "changelog-path": "crates/llama-sys/CHANGELOG.md"
+    }
+  },
+  "plugins": [
+    {
+      "type": "cargo-workspace",
+      "merge": false
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "rs-llama",
+      "components": ["rs-llama", "rs-llama-sys"]
+    }
+  ]
+}
