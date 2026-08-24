@@ -24,9 +24,7 @@ llama-sys          bindgen + CMake (this repo)
 llama.cpp / ggml   cloned at build time
 ```
 
-Text generation follows llama.cpp `examples/simple/simple.cpp`:
-
-`load model → tokenize → llama_decode → llama_sampler_sample → token_to_piece`
+Text generation follows llama.cpp `examples/simple/simple.cpp`.
 
 ## Requirements
 
@@ -36,11 +34,8 @@ Text generation follows llama.cpp `examples/simple/simple.cpp`:
 - CMake
 - Clang / libclang (`bindgen`)
 
-Optional: pin a local tree
-
 ```bash
 export LLAMA_CPP_SRC=/path/to/llama.cpp
-# or
 export LLAMA_CPP_REV=master
 ```
 
@@ -69,64 +64,57 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-Public API:
-
-- `LlamaEngine::load` / `generate` / `generate_to_writer` / `generate_with_callback`
-- `EngineConfig`, `GenerateRequest` (`with_chat`, `with_image`)
-- `HfDownload`, `download_huggingface_model`, `download_huggingface_model_bundle`
-- `resolve_model_path`, `resolve_model_files`, `ResolvedModel`
-
 ## Build
+
+### CPU
 
 ```bash
 cargo build --release
+```
+
+CI smoke-tests this on Linux, Windows, and macOS.
+
+### NVIDIA CUDA
+
+```bash
 cargo build --release --features cuda
+```
+
+CI compiles this on Linux. GitHub-hosted runners have no NVIDIA GPU, so CUDA inference is not run there.
+
+```bash
+cargo run --release --features cuda -- --model ./models/model.gguf --gpu-layers 999 --prompt "Hello"
+```
+
+### Vulkan
+
+```bash
 cargo build --release --features vulkan
+```
+
+CI compiles this on Linux (`libvulkan-dev`).
+
+### Apple Metal
+
+```bash
 cargo build --release --features metal
 ```
 
-The first build is slow: it clones and compiles llama.cpp.
+CI builds and smoke-tests this on `macos-latest`. `llama-sys` enables `GGML_METAL=ON` on macOS.
 
-## Run
-
-### Local GGUF
+## Run a local GGUF model
 
 ```bash
-cargo run --release -- \
-  --model ./models/model.gguf \
-  --prompt "Explain why Rust is useful for local LLM inference." \
-  --max-tokens 128
+cargo run --release -- --model ./models/model.gguf --chat --prompt "What is an LED lamp?"
 ```
 
-### Hugging Face + instruct chat (recommended)
+## Download from Hugging Face
 
-Instruct models need `--chat`. Without it they often continue the question instead of answering.
+Instruct models need `--chat` or they continue the question instead of answering.
 
 ```bash
-cargo run --release -- \
-  --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
-  --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
-  --chat \
-  --no-echo-prompt \
-  --prompt "What is an LED lamp?" \
-  --max-tokens 80
+cargo run --release -- --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf --chat --no-echo-prompt --prompt "What is an LED lamp?"
 ```
-
-`--chat` wraps ChatML:
-
-```text
-<|im_start|>system
-You are a helpful assistant. Answer the question in one or two short sentences.
-<|im_end|>
-<|im_start|>user
-What is an LED lamp?
-<|im_end|>
-<|im_start|>assistant
-```
-
-`--no-echo-prompt` prints only the model answer.
-
-Downloaded files go to `./models/`.
 
 ### Private or gated repos
 
@@ -134,76 +122,45 @@ Downloaded files go to `./models/`.
 export HF_TOKEN=hf_xxx
 ```
 
-Also accepts `HUGGING_FACE_HUB_TOKEN`.
-
-### GPU offload
-
-```bash
-cargo run --release --features cuda -- \
-  --model ./models/model.gguf \
-  --prompt "Hello" \
-  --gpu-layers 999
-```
-
 ## Vision / mmproj
 
-Hugging Face downloads list the repo and **auto-download `mmproj*.gguf`** when present (prefers F16/FP16/BF16, same folder as the model).
+Hugging Face downloads auto-fetch `mmproj*.gguf` when present.
 
 ```bash
-cargo run --release -- \
-  --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF \
-  --hf-file SmolVLM-256M-Instruct-Q8_0.gguf \
-  --image ./photo.jpg \
-  --chat \
-  --prompt "What is an LED lamp in this image?"
+cargo run --release -- --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF --hf-file SmolVLM-256M-Instruct-Q8_0.gguf --image ./photo.jpg --chat --prompt "What is in this image?"
 ```
 
 ```bash
---hf-mmproj mmproj-F16.gguf     # file inside the repo
+--hf-mmproj mmproj-F16.gguf
 --mmproj ./models/mmproj-F16.gguf
---no-mmproj                     # skip auto download
+--no-mmproj
 ```
 
-Local `--model` also scans the same directory for `*mmproj*.gguf`.
-
-Pixel encode through llama.cpp `mtmd` is not wired yet. The projector is downloaded and attached; CLIP encode is the next step.
+`mtmd` pixel encode is not wired yet. The projector is downloaded and attached.
 
 ## CLI flags
 
 ```text
--m, --model <MODEL>
---hf-repo <HF_REPO>
---hf-file <HF_FILE>
---hf-mmproj <HF_MMPROJ>
---mmproj <MMPROJ>
---no-mmproj
---image <IMAGE>
---chat
---no-echo-prompt
---hf-revision <HF_REVISION>
---model-dir <MODEL_DIR>
---hf-force-download
--p, --prompt <PROMPT>
--n, --max-tokens <MAX_TOKENS>
--c, --ctx-size <CTX_SIZE>
---gpu-layers <GPU_LAYERS>
--t, --threads <THREADS>
-```
-
-```bash
-cargo run --release -- --help
+-m, --model
+--hf-repo --hf-file --hf-mmproj --mmproj --no-mmproj --image
+--chat --no-echo-prompt
+--hf-revision --model-dir --hf-force-download
+-p, --prompt  -n, --max-tokens  -c, --ctx-size
+--gpu-layers  -t, --threads
 ```
 
 ## Continuous integration
 
-CI and Release run on **Linux, Windows, and macOS**:
+| Check | Where | What |
+| --- | --- | --- |
+| CPU + real GGUF smoke | Linux, Windows, macOS | Ask **What is an LED lamp?** |
+| Metal | macOS | `--features metal` + smoke |
+| Vulkan | Linux | compile `--features vulkan` |
+| CUDA | Linux | compile `--features cuda` |
 
-1. Build `rs-llama` (compiles llama.cpp via `llama-sys`)
-2. `cargo test --release`
-3. Smoke test: download SmolLM2-135M-Instruct Q4_K_M and ask **What is an LED lamp?** with `--chat --no-echo-prompt`
-4. Fail if the answer does not mention led / light / diode / lamp / electric / bulb
+Smoke fails if the answer does not mention led / light / diode / lamp / electric / bulb.
 
-Release packages binaries only after those tests pass. A GitHub Release is created only on tags `v*`.
+Release packages binaries only after CPU tests pass. GitHub Release only on tags `v*`.
 
 ## Workspace
 
@@ -213,5 +170,3 @@ rs-llama/
   crates/llama-sys/    FFI to llama.cpp
   .github/workflows/   CI + gated release
 ```
-
-See [docs/LLAMA-CPP-2.md](docs/LLAMA-CPP-2.md) for the old wrapper notes and why we build llama.cpp directly.
