@@ -8,13 +8,17 @@ fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-env-changed=LLAMA_CPP_SRC");
     println!("cargo:rerun-if-env-changed=LLAMA_CPP_REV");
+    println!("cargo:rerun-if-env-changed=ANDROID_NDK_HOME");
+    println!("cargo:rerun-if-env-changed=ANDROID_NDK");
+    println!("cargo:rerun-if-env-changed=NDK_HOME");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let target = env::var("TARGET").unwrap_or_default();
     let src_dir = llama_src_dir(&out_dir);
-    let dst = build_llama(&src_dir);
+    let dst = build_llama(&src_dir, &target);
 
-    generate_bindings(&src_dir, &out_dir);
-    emit_link_flags(&dst);
+    generate_bindings(&src_dir, &out_dir, &target);
+    emit_link_flags(&dst, &target);
 }
 
 fn llama_src_dir(out_dir: &Path) -> PathBuf {
@@ -44,7 +48,25 @@ fn llama_src_dir(out_dir: &Path) -> PathBuf {
     src
 }
 
-fn build_llama(src: &Path) -> PathBuf {
+fn android_ndk() -> Option<PathBuf> {
+    ["ANDROID_NDK_HOME", "ANDROID_NDK", "NDK_HOME"]
+        .into_iter()
+        .find_map(|key| env::var_os(key).map(PathBuf::from))
+}
+
+fn android_abi(target: &str) -> &'static str {
+    if target.starts_with("aarch64-") {
+        "arm64-v8a"
+    } else if target.starts_with("armv7-") {
+        "armeabi-v7a"
+    } else if target.starts_with("x86_64-") {
+        "x86_64"
+    } else {
+        "x86"
+    }
+}
+
+fn build_llama(src: &Path, target: &str) -> PathBuf {
     let mut config = cmake::Config::new(src);
     config
         .profile("Release")
@@ -65,30 +87,57 @@ fn build_llama(src: &Path) -> PathBuf {
     if cfg!(feature = "vulkan") {
         config.define("GGML_VULKAN", "ON");
     }
-    if cfg!(feature = "metal") || cfg!(target_os = "macos") {
+    if (cfg!(feature = "metal") || target.contains("apple")) && !target.contains("android") {
         config.define("GGML_METAL", "ON");
+    }
+
+    if target.contains("android") {
+        let ndk = android_ndk().expect("ANDROID_NDK_HOME / ANDROID_NDK / NDK_HOME required for Android");
+        let toolchain = ndk.join("build/cmake/android.toolchain.cmake");
+        config
+            .define("CMAKE_TOOLCHAIN_FILE", toolchain.to_string_lossy().as_ref())
+            .define("ANDROID_ABI", android_abi(target))
+            .define("ANDROID_PLATFORM", "android-28")
+            .define("GGML_OPENMP", "OFF");
     }
 
     config.build()
 }
 
-fn generate_bindings(src: &Path, out_dir: &Path) {
-    let bindings = bindgen::Builder::default()
+fn generate_bindings(src: &Path, out_dir: &Path, target: &str) {
+    let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
         .clang_arg(format!("-I{}", src.join("include").display()))
         .clang_arg(format!("-I{}", src.join("ggml/include").display()))
         .allowlist_function("llama_.*")
         .allowlist_type("llama_.*")
         .allowlist_var("LLAMA_.*")
-        .blocklist_function("llama_log_set")
+        .blocklist_function("llama_log_set");
+
+    if target.contains("android") {
+        if let Some(ndk) = android_ndk() {
+            let host = if cfg!(target_os = "macos") {
+                "darwin-x86_64"
+            } else {
+                "linux-x86_64"
+            };
+            let prebuilt = ndk.join("toolchains/llvm/prebuilt").join(host);
+            let sysroot = prebuilt.join("sysroot");
+            if sysroot.exists() {
+                builder = builder.clang_arg(format!("--sysroot={}", sysroot.display()));
+            }
+            builder = builder.clang_arg(format!("--target={target}"));
+        }
+    }
+
+    builder
         .generate()
-        .expect("bindgen failed");
-    bindings
+        .expect("bindgen failed")
         .write_to_file(out_dir.join("bindings.rs"))
         .expect("failed to write bindings.rs");
 }
 
-fn emit_link_flags(dst: &Path) {
+fn emit_link_flags(dst: &Path, target: &str) {
     let search_dirs = [
         dst.join("lib"),
         dst.join("lib64"),
@@ -128,7 +177,6 @@ fn emit_link_flags(dst: &Path) {
         println!("cargo:rustc-link-lib=static=ggml-cpu");
     }
 
-    let target = env::var("TARGET").unwrap_or_default();
     if target.contains("windows") {
         println!("cargo:rustc-link-lib=dylib=advapi32");
         println!("cargo:rustc-link-lib=dylib=user32");
@@ -139,6 +187,12 @@ fn emit_link_flags(dst: &Path) {
         println!("cargo:rustc-link-lib=framework=Foundation");
         println!("cargo:rustc-link-lib=framework=Metal");
         println!("cargo:rustc-link-lib=framework=MetalKit");
+    } else if target.contains("android") {
+        println!("cargo:rustc-link-lib=dylib=c++_shared");
+        println!("cargo:rustc-link-lib=dylib=log");
+        println!("cargo:rustc-link-lib=dylib=android");
+        println!("cargo:rustc-link-lib=dylib=dl");
+        println!("cargo:rustc-link-lib=dylib=m");
     } else {
         println!("cargo:rustc-link-lib=dylib=stdc++");
         println!("cargo:rustc-link-lib=dylib=pthread");
