@@ -59,6 +59,7 @@ pub struct GenerateRequest {
     pub temperature: f32,
     pub seed: u32,
     pub image_path: Option<PathBuf>,
+    pub chat: bool,
 }
 
 impl GenerateRequest {
@@ -69,6 +70,7 @@ impl GenerateRequest {
             temperature: 0.8,
             seed: 42,
             image_path: None,
+            chat: false,
         }
     }
 
@@ -79,6 +81,11 @@ impl GenerateRequest {
 
     pub fn with_image(mut self, image_path: impl Into<PathBuf>) -> Self {
         self.image_path = Some(image_path.into());
+        self
+    }
+
+    pub fn with_chat(mut self, chat: bool) -> Self {
+        self.chat = chat;
         self
     }
 }
@@ -172,7 +179,7 @@ impl LlamaEngine {
             }
         }
 
-        let prompt = vision_prompt(request, self.mmproj_path.as_deref());
+        let prompt = model_prompt(request, self.mmproj_path.as_deref());
         let ctx = unsafe { self.new_context()? };
         let vocab = unsafe { llama_sys::llama_model_get_vocab(self.model) };
         if vocab.is_null() {
@@ -228,6 +235,26 @@ impl Drop for LlamaEngine {
             unsafe { llama_sys::llama_model_free(self.model) };
             self.model = ptr::null_mut();
         }
+    }
+}
+
+fn model_prompt(request: &GenerateRequest, mmproj: Option<&Path>) -> String {
+    let user = match (&request.image_path, mmproj) {
+        (Some(image), Some(mmproj)) => format!(
+            "Image file: {}\nVision projector: {}\n{}",
+            image.display(),
+            mmproj.display(),
+            request.prompt
+        ),
+        _ => request.prompt.clone(),
+    };
+
+    if request.chat {
+        format!(
+            "<|im_start|>system\nYou are a helpful assistant. Answer the question in one or two short sentences.<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n"
+        )
+    } else {
+        user
     }
 }
 
@@ -340,6 +367,10 @@ where
                 return Err(err);
             }
         };
+        if piece.contains("<|im_end|>") {
+            generated.push_str(piece.split("<|im_end|>").next().unwrap_or(""));
+            break;
+        }
         generated.push_str(&piece);
         on_piece(&piece);
 
@@ -353,16 +384,4 @@ where
 
     llama_sys::llama_sampler_free(smpl);
     Ok(generated)
-}
-
-fn vision_prompt(request: &GenerateRequest, mmproj: Option<&Path>) -> String {
-    match (&request.image_path, mmproj) {
-        (Some(image), Some(mmproj)) => format!(
-            "<image>\nImage file: {}\nVision projector: {}\n{}\n",
-            image.display(),
-            mmproj.display(),
-            request.prompt
-        ),
-        _ => request.prompt.clone(),
-    }
 }

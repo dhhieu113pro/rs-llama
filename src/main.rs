@@ -36,6 +36,14 @@ struct Args {
     #[arg(long)]
     image: Option<PathBuf>,
 
+    /// Wrap the prompt in ChatML so instruct models answer instead of continuing the text.
+    #[arg(long, default_value_t = false)]
+    chat: bool,
+
+    /// Do not reprint the prompt before the model answer.
+    #[arg(long, default_value_t = false)]
+    no_echo_prompt: bool,
+
     /// Hugging Face revision/branch/tag.
     #[arg(long, default_value = "main")]
     hf_revision: String,
@@ -70,7 +78,6 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    // llama.cpp uses large stack frames. Windows defaults to 1MB and overflows.
     std::thread::Builder::new()
         .name("rs-llama".into())
         .stack_size(16 * 1024 * 1024)
@@ -111,13 +118,17 @@ fn run() -> Result<()> {
     }
     let engine = LlamaEngine::load(config)?;
 
-    let mut request = GenerateRequest::new(&args.prompt).with_max_tokens(args.max_tokens);
+    let mut request = GenerateRequest::new(&args.prompt)
+        .with_max_tokens(args.max_tokens)
+        .with_chat(args.chat);
     if let Some(image) = args.image {
         request = request.with_image(image);
     }
 
-    print!("{}", args.prompt);
-    io::stdout().flush()?;
+    if !args.no_echo_prompt {
+        print!("{}", args.prompt);
+        io::stdout().flush()?;
+    }
     engine.generate_to_writer(&request, &mut io::stdout())?;
     println!();
     Ok(())
