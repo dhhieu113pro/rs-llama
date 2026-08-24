@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 description = "Direct FFI bindings to llama.cpp"
 license = "MIT"
+repository = "https://github.com/dhhieu113pro/rs-llama"
+homepage = "https://github.com/dhhieu113pro/rs-llama"
 links = "llama"
 
 [features]

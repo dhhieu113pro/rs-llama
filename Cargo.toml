@@ -9,7 +9,7 @@ edition = "2021"
 description = "Rust library and CLI for running GGUF models through llama.cpp"
 license = "MIT"
 repository = "https://github.com/dhhieu113pro/rs-llama"
-homepage = "https://github.com/dhhieu113pro/rs-llama"
+homepage = "https://dhhieu113pro.github.io/rs-llama"
 readme = "README.md"
 keywords = ["llm", "llama", "gguf", "llama-cpp"]
 categories = ["command-line-utilities", "api-bindings"]
@@ -38,6 +38,6 @@ metal = ["llama-sys/metal"]
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-llama-sys = { path = "crates/llama-sys" }
+llama-sys = { version = "0.1.0", path = "crates/llama-sys" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde_json = "1"
