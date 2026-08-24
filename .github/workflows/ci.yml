@@ -115,7 +115,7 @@ jobs:
   backends:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -144,14 +144,23 @@ jobs:
 
       - name: Install Vulkan SDK
         if: matrix.features == 'vulkan'
-        run: sudo apt-get install -y libvulkan-dev glslc mesa-vulkan-drivers
+        run: |
+          sudo apt-get install -y \
+            libvulkan-dev \
+            glslc \
+            glslang-dev \
+            glslang-tools \
+            spirv-headers \
+            spirv-tools \
+            mesa-vulkan-drivers
 
-      - name: Install CUDA toolkit
+      - name: Install CUDA compiler only
         if: matrix.features == 'cuda'
         uses: Jimver/cuda-toolkit@v0.2.24
         with:
-          cuda: "12.6.3"
+          cuda: "12.4.1"
           method: network
+          sub-packages: '["nvcc"]'
           use-github-cache: true
 
       - name: Cache Cargo
