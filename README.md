@@ -2,8 +2,8 @@
 
 A Rust **library and CLI** for running GGUF language models through `llama.cpp` using the maintained [`llama-cpp-2`](https://crates.io/crates/llama-cpp-2) bindings.
 
-GitHub repo: [dhhieu113pro/llama-rust](https://github.com/dhhieu113pro/llama-rust)  
-Crates.io name: **`rs-llama`** (the old names `llama-rust` and `llama-cpp-rs` are already taken).
+GitHub repo: [dhhieu113pro/rs-llama](https://github.com/dhhieu113pro/rs-llama)  
+Crates.io name: **`rs-llama`**
 
 ## Install
 
@@ -18,7 +18,7 @@ Until it is published, use Git:
 
 ```toml
 [dependencies]
-rs-llama = { git = "https://github.com/dhhieu113pro/llama-rust" }
+rs-llama = { git = "https://github.com/dhhieu113pro/rs-llama" }
 ```
 
 ```rust
@@ -28,7 +28,7 @@ use rs_llama::{download_huggingface_model, EngineConfig, GenerateRequest, HfDown
 Optional GPU features:
 
 ```toml
-rs-llama = { git = "https://github.com/dhhieu113pro/llama-rust", features = ["cuda"] }
+rs-llama = { git = "https://github.com/dhhieu113pro/rs-llama", features = ["cuda"] }
 ```
 
 Example:
