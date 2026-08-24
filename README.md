@@ -2,8 +2,6 @@
 
 A Rust **library and CLI** for running GGUF models through [llama.cpp](https://github.com/ggml-org/llama.cpp).
 
-It does **not** use `llama-cpp-2`. Inference goes through our crate `llama-sys`, which clones llama.cpp at build time, compiles it with CMake, and binds `llama.h`.
-
 GitHub: [dhhieu113pro/rs-llama](https://github.com/dhhieu113pro/rs-llama)  
 Releases: [github.com/dhhieu113pro/rs-llama/releases](https://github.com/dhhieu113pro/rs-llama/releases)
 
@@ -49,9 +47,7 @@ rs-llama CLI + library
     v
 LlamaEngine
     v
-llama-sys          bindgen + CMake
-    v
-llama.cpp / ggml   cloned at build time
+llama.cpp / ggml
 ```
 
 ## Requirements
