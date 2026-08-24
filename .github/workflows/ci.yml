@@ -22,10 +22,13 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
+            cargo_features: ""
           - name: Windows x64
             os: windows-latest
+            cargo_features: ""
           - name: macOS Metal
             os: macos-latest
+            cargo_features: "--features metal"
 
     steps:
       - name: Checkout
@@ -72,16 +75,11 @@ jobs:
       - name: Refresh lockfile after crate rename
         run: cargo generate-lockfile
 
-      - name: Build CPU release binary
-        if: runner.os != 'macOS'
-        run: cargo build --release
-
-      - name: Build Metal release binary
-        if: runner.os == 'macOS'
-        run: cargo build --release --features metal
+      - name: Build release binary
+        run: cargo build --release ${{ matrix.cargo_features }}
 
       - name: Run unit tests
-        run: cargo test --release --features ${{ runner.os == 'macOS' && 'metal' || '' }}
+        run: cargo test --release ${{ matrix.cargo_features }}
 
       - name: Smoke test LLM inference
         shell: bash
