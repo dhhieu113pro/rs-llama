@@ -11,6 +11,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ANDROID_NDK_HOME");
     println!("cargo:rerun-if-env-changed=ANDROID_NDK");
     println!("cargo:rerun-if-env-changed=NDK_HOME");
+    println!("cargo:rerun-if-env-changed=INCLUDE");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let target = env::var("TARGET").unwrap_or_default();
@@ -110,6 +111,42 @@ fn build_llama(src: &Path, target: &str) -> PathBuf {
     config.build()
 }
 
+/// Discover MSVC INCLUDE paths so bindgen's libclang can find stdbool.h / stddef.h.
+/// Matches the approach used by utilityai/llama-cpp-rs#839.
+fn msvc_include_paths(out_dir: &Path) -> Vec<String> {
+    let mut paths = Vec::new();
+
+    // Prefer INCLUDE already set (Developer Prompt / vcvars / CI).
+    if let Ok(include) = env::var("INCLUDE") {
+        for p in include.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+            paths.push(p.to_string());
+        }
+        if !paths.is_empty() {
+            return paths;
+        }
+    }
+
+    // Otherwise ask the `cc` crate — it bootstraps the MSVC environment.
+    let dummy = out_dir.join("bindgen_dummy.c");
+    if fs::write(&dummy, "int main(void) { return 0; }").is_ok() {
+        let mut build = cc::Build::new();
+        build.file(&dummy);
+        if let Ok(compiler) = build.try_get_compiler() {
+            if let Some((_, value)) = compiler
+                .env()
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("INCLUDE"))
+            {
+                for p in value.to_string_lossy().split(';').map(str::trim).filter(|s| !s.is_empty()) {
+                    paths.push(p.to_string());
+                }
+            }
+        }
+    }
+
+    paths
+}
+
 fn generate_bindings(src: &Path, out_dir: &Path, target: &str) {
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
@@ -134,6 +171,18 @@ fn generate_bindings(src: &Path, out_dir: &Path, target: &str) {
             }
             builder = builder.clang_arg(format!("--target={target}"));
         }
+    }
+
+    // Windows MSVC: libclang does not inherit MSVC system includes by default,
+    // which causes fatal errors like "stdbool.h file not found" in ggml.h.
+    if target.contains("windows") && target.contains("msvc") {
+        for include in msvc_include_paths(out_dir) {
+            builder = builder.clang_arg("-isystem").clang_arg(include);
+        }
+        builder = builder
+            .clang_arg(format!("--target={target}"))
+            .clang_arg("-fms-compatibility")
+            .clang_arg("-fms-extensions");
     }
 
     builder
