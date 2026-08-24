@@ -101,6 +101,12 @@ fn build_llama(src: &Path, target: &str) -> PathBuf {
             .define("GGML_OPENMP", "OFF");
     }
 
+    // Windows (especially ARM64) often fails to link OpenMP runtime (__kmpc_* symbols).
+    // Disable it for reliability, matching the Android approach.
+    if target.contains("windows") {
+        config.define("GGML_OPENMP", "OFF");
+    }
+
     config.build()
 }
 
