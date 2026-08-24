@@ -31,6 +31,7 @@ jobs:
             artifact: rs-llama-macos
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -65,11 +66,40 @@ jobs:
           clang --version
           cmake --version
 
+      - name: Cache downloaded GGUF models
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: smollm2-135m-instruct-q4-k-m-${{ runner.os }}
+
       - name: Refresh lockfile after crate rename
         run: cargo generate-lockfile
 
       - name: Build release binary
         run: cargo build --release
+
+      - name: Run unit tests
+        run: cargo test --release
+
+      - name: Smoke test LLM inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f target/release/rs-llama.exe ]; then
+            BIN=target/release/rs-llama.exe
+          else
+            BIN=target/release/rs-llama
+          fi
+          "$BIN" \
+            --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
+            --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
+            --prompt "Write one short sentence about Rust." \
+            --max-tokens 24 \
+            --ctx-size 512 \
+            --threads 2 \
+            | tee smoke-output.txt
+          test -s smoke-output.txt
+          echo "Smoke test produced $(wc -c < smoke-output.txt) bytes of output"
 
       - name: Package Linux binary
         if: runner.os == 'Linux'

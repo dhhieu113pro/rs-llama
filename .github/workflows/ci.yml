@@ -13,15 +13,26 @@ permissions:
 
 jobs:
   smoke:
-    name: Build and smoke-test LLM
-    runs-on: ubuntu-latest
+    name: Test ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-latest
+          - name: Windows x64
+            os: windows-latest
+          - name: macOS
+            os: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Use latest stable Rust
+        shell: bash
         run: |
           rustup update stable
           rustup default stable
@@ -29,9 +40,25 @@ jobs:
           cargo --version
 
       - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake clang libclang-dev
+
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install cmake llvm
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
+
+      - name: Install Windows build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm cmake --no-progress -y
+          clang --version
+          cmake --version
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -40,7 +67,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: models
-          key: smollm2-135m-instruct-q4-k-m
+          key: smollm2-135m-instruct-q4-k-m-${{ runner.os }}
 
       - name: Refresh lockfile after crate rename
         run: cargo generate-lockfile
@@ -52,9 +79,15 @@ jobs:
         run: cargo test --release
 
       - name: Smoke test LLM inference
+        shell: bash
         run: |
           set -euo pipefail
-          ./target/release/rs-llama \
+          if [ -f target/release/rs-llama.exe ]; then
+            BIN=target/release/rs-llama.exe
+          else
+            BIN=target/release/rs-llama
+          fi
+          "$BIN" \
             --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
             --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
             --prompt "Write one short sentence about Rust." \
