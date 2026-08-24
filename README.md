@@ -5,35 +5,21 @@ A Rust **library and CLI** for running GGUF models through [llama.cpp](https://g
 GitHub: [dhhieu113pro/rs-llama](https://github.com/dhhieu113pro/rs-llama)  
 Releases: [github.com/dhhieu113pro/rs-llama/releases](https://github.com/dhhieu113pro/rs-llama/releases)
 
-## Releases
+## Platforms
 
-Asset names follow [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw/releases) rustc triples. Android is attached like [NullClaw](https://github.com/nullclaw/nullclaw/releases).
+| Platform | CI | Release asset |
+| --- | --- | --- |
+| Linux x86_64 | build + LED smoke + vision | `rs-llama-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows x86_64 | build + LED smoke + vision | `rs-llama-x86_64-pc-windows-msvc.zip` |
+| macOS Apple Silicon | Metal build + LED smoke + vision | `rs-llama-aarch64-apple-darwin.tar.gz` |
+| Android / Termux arm64 | NDK cross-compile | `rs-llama-aarch64-linux-android.tar.gz` |
+| NVIDIA CUDA | Linux compile | source `--features cuda` |
+| Vulkan | Linux compile | source `--features vulkan` |
 
-**Published today (`v0.1.0`)** still uses the old names:
-
-| Asset | Platform |
-| --- | --- |
-| `llama-rust-linux-x86_64.tar.gz` | Linux x86_64 |
-| `llama-rust-windows-x86_64.zip` | Windows x86_64 |
-| `llama-rust-macos.tar.gz` | macOS |
-
-**Next `v*` tag** uploads:
-
-| Asset | Platform |
-| --- | --- |
-| `rs-llama-x86_64-unknown-linux-gnu.tar.gz` | Linux x86_64 |
-| `rs-llama-x86_64-pc-windows-msvc.zip` | Windows x86_64 |
-| `rs-llama-aarch64-apple-darwin.tar.gz` | macOS Apple Silicon |
-| `rs-llama-aarch64-linux-android.tar.gz` | Android / Termux arm64 |
-| `SHA256SUMS` | checksums |
-
-Not in the release zip (compile in CI only): CUDA, Vulkan, Linux musl, Linux aarch64, Android armv7.
-
-A GitHub Release is created only on tags `v*`, after desktop smoke + vision smoke + Android compile succeed.
+Tags `v*` publish the four binaries plus `SHA256SUMS` after those jobs pass.
 
 ```bash
-# after the next tag
-curl -L -O https://github.com/dhhieu113pro/rs-llama/releases/download/v0.2.0/rs-llama-x86_64-unknown-linux-gnu.tar.gz
+curl -L -O https://github.com/dhhieu113pro/rs-llama/releases/latest/download/rs-llama-x86_64-unknown-linux-gnu.tar.gz
 tar -xzf rs-llama-x86_64-unknown-linux-gnu.tar.gz
 ./rs-llama-x86_64-unknown-linux-gnu/rs-llama --help
 ```
@@ -106,7 +92,7 @@ cargo run --release -- --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF --hf-fi
 
 ## Vision / mmproj
 
-CI runs this on Linux, Windows, and macOS. `mtmd` pixel encode is not wired yet.
+CI generates a text image (`LED LAMP`) and runs `--image` on Linux, Windows, and macOS.
 
 ```bash
 cargo run --release -- --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF --hf-file SmolVLM-256M-Instruct-Q8_0.gguf --image ./photo.jpg --chat --prompt "What is in this image?"
@@ -117,7 +103,7 @@ cargo run --release -- --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF --hf-file S
 | Check | Where |
 | --- | --- |
 | CPU + LED lamp smoke | Linux, Windows, macOS |
-| Vision mmproj + `--image` | Linux, Windows, macOS |
+| Vision image + mmproj | Linux, Windows, macOS |
 | Metal | macOS |
 | Vulkan / CUDA compile | Linux |
 | Android arm64 | NDK `cargo ndk -t arm64-v8a` |
