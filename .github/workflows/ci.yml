@@ -42,11 +42,14 @@ jobs:
           path: models
           key: smollm2-135m-instruct-q4-k-m
 
+      - name: Refresh lockfile after crate rename
+        run: cargo generate-lockfile
+
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --release
 
       - name: Run unit tests
-        run: cargo test --release --locked
+        run: cargo test --release
 
       - name: Smoke test LLM inference
         run: |

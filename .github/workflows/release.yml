@@ -65,8 +65,11 @@ jobs:
           clang --version
           cmake --version
 
+      - name: Refresh lockfile after crate rename
+        run: cargo generate-lockfile
+
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --release
 
       - name: Package Linux binary
         if: runner.os == 'Linux'
