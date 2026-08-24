@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "rs-llama"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Rust library and CLI for running GGUF models through llama.cpp"
 license = "MIT"
@@ -38,6 +38,6 @@ metal = ["llama-sys/metal"]
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-llama-sys = { version = "0.1.0", path = "crates/llama-sys" }
+llama-sys = { package = "rs-llama-sys", version = "0.1.1", path = "crates/llama-sys" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde_json = "1"

@@ -1,12 +1,16 @@
 [package]
-name = "llama-sys"
-version = "0.1.0"
+name = "rs-llama-sys"
+version = "0.1.1"
 edition = "2021"
-description = "Direct FFI bindings to llama.cpp"
+description = "Direct FFI bindings to llama.cpp (used by rs-llama)"
 license = "MIT"
 repository = "https://github.com/dhhieu113pro/rs-llama"
 homepage = "https://github.com/dhhieu113pro/rs-llama"
 links = "llama"
+
+[lib]
+name = "llama_sys"
+path = "src/lib.rs"
 
 [features]
 default = []
