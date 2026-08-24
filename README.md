@@ -21,10 +21,6 @@ Until it is published, use Git:
 rs-llama = { git = "https://github.com/dhhieu113pro/rs-llama" }
 ```
 
-```rust
-use rs_llama::{download_huggingface_model, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
-```
-
 Optional GPU features:
 
 ```toml
@@ -34,23 +30,21 @@ rs-llama = { git = "https://github.com/dhhieu113pro/rs-llama", features = ["cuda
 Example:
 
 ```rust
-use rs_llama::{download_huggingface_model, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
+use rs_llama::{download_huggingface_model_bundle, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
 
 fn main() -> anyhow::Result<()> {
-    let model_path = download_huggingface_model(&HfDownload::new(
-        "mradermacher/SmolLM2-135M-Instruct-GGUF",
-        "SmolLM2-135M-Instruct.Q4_K_M.gguf",
+    let bundle = download_huggingface_model_bundle(&HfDownload::new(
+        "ggml-org/SmolVLM-256M-Instruct-GGUF",
+        "SmolVLM-256M-Instruct-Q8_0.gguf",
     ))?;
 
-    let engine = LlamaEngine::load(
-        EngineConfig::new(model_path)
-            .with_ctx_size(512)
-            .with_threads(2),
-    )?;
+    let mut config = EngineConfig::new(bundle.model_path).with_ctx_size(1024);
+    if let Some(mmproj) = bundle.mmproj_path {
+        config = config.with_mmproj(mmproj);
+    }
 
-    let text = engine.generate(
-        &GenerateRequest::new("Write one sentence about Rust.").with_max_tokens(32),
-    )?;
+    let engine = LlamaEngine::load(config)?;
+    let text = engine.generate(&GenerateRequest::new("What is in this picture?"))?;
     println!("{text}");
     Ok(())
 }
@@ -60,9 +54,39 @@ Public API:
 
 - `LlamaEngine::load` / `generate` / `generate_to_writer` / `generate_with_callback`
 - `EngineConfig` and `GenerateRequest`
-- `HfDownload`, `download_huggingface_model`, `resolve_model_path`
+- `HfDownload`, `download_huggingface_model`, `download_huggingface_model_bundle`
+- `resolve_model_path`, `resolve_model_files`, `ResolvedModel`
 
 The consuming project still needs a C/C++ compiler, CMake, and Clang/libclang because `llama.cpp` is compiled as part of the build.
+
+## Vision / mmproj
+
+When you download from Hugging Face, `rs-llama` lists the repo and **automatically downloads `mmproj*.gguf`** if one exists next to the language model.
+
+```bash
+cargo run --release -- \
+  --hf-repo ggml-org/SmolVLM-256M-Instruct-GGUF \
+  --hf-file SmolVLM-256M-Instruct-Q8_0.gguf \
+  --image ./photo.jpg \
+  --prompt "What is LED lamp in this image?"
+```
+
+It prefers `mmproj-F16` / `FP16` / `BF16` over quantized projectors, and prefers a projector in the same folder as the model file.
+
+```bash
+# explicit projector file in the repo
+--hf-mmproj mmproj-F16.gguf
+
+# local projector
+--mmproj ./models/mmproj-F16.gguf
+
+# skip auto download
+--no-mmproj
+```
+
+For a local GGUF, it also looks in the same directory for `*mmproj*.gguf`.
+
+`llama-cpp-2` 0.1.154 does not expose llama.cpp `mtmd` image encoding yet, so the projector is downloaded and attached. Pixel-level CLIP encode will land when the binding adds `mtmd`.
 
 ## Publish to crates.io
 
@@ -116,17 +140,6 @@ cargo run --release -- \
   --max-tokens 128
 ```
 
-You can also configure the context size and CPU thread count:
-
-```bash
-cargo run --release -- \
-  --model ./models/model.gguf \
-  --prompt "Hello" \
-  --ctx-size 4096 \
-  --threads 8 \
-  --max-tokens 128
-```
-
 ## Download and run a model from Hugging Face
 
 ```bash
@@ -139,49 +152,13 @@ cargo run --release -- \
 
 By default, downloaded models are stored in `./models/`.
 
-### Change the model cache directory
-
-```bash
-cargo run --release -- \
-  --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
-  --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
-  --model-dir ./my-models \
-  --prompt "Hello"
-```
-
-### Force a new download
-
-```bash
-cargo run --release -- \
-  --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
-  --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
-  --hf-force-download \
-  --prompt "Hello"
-```
-
-### Use a branch, tag, or commit
-
-```bash
-cargo run --release -- \
-  --hf-repo owner/model-GGUF \
-  --hf-file model.Q4_K_M.gguf \
-  --hf-revision main \
-  --prompt "Hello"
-```
-
 ## Private or gated Hugging Face models
 
 The application checks `HF_TOKEN` then `HUGGING_FACE_HUB_TOKEN`.
 
 ```bash
 export HF_TOKEN=hf_xxx
-cargo run --release -- \
-  --hf-repo owner/private-model-GGUF \
-  --hf-file model.Q4_K_M.gguf \
-  --prompt "Hello"
 ```
-
-Do not commit your Hugging Face token to the repository.
 
 ## GPU offload
 
@@ -199,6 +176,10 @@ cargo run --release --features cuda -- \
 -m, --model <MODEL>
 --hf-repo <HF_REPO>
 --hf-file <HF_FILE>
+--hf-mmproj <HF_MMPROJ>
+--mmproj <MMPROJ>
+--no-mmproj
+--image <IMAGE>
 --hf-revision <HF_REVISION>
 --model-dir <MODEL_DIR>
 --hf-force-download
@@ -213,19 +194,9 @@ cargo run --release --features cuda -- \
 cargo run --release -- --help
 ```
 
-## Example: small model smoke test
-
-```bash
-cargo run --release -- \
-  --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
-  --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
-  --prompt "Write one sentence about Rust." \
-  --max-tokens 32
-```
-
 ## Continuous integration
 
-`.github/workflows/ci.yml` builds the `rs-llama` binary and smoke-tests real GGUF inference on Ubuntu.
+`.github/workflows/ci.yml` builds the `rs-llama` binary and smoke-tests real GGUF inference on Linux, Windows, and macOS.
 
 ## Architecture
 
@@ -236,23 +207,10 @@ Your Rust project
 rs_llama library  +  rs-llama CLI
     |
     +--> Hugging Face downloader/cache
-    |
+    |      + auto mmproj detect/download
     v
 llama-cpp-2
     |
     v
 llama.cpp / ggml
 ```
-
-## Next milestones
-
-1. Publish `rs-llama` to crates.io.
-2. Add chat-template support from GGUF metadata.
-3. Add async/streaming helpers.
-4. Add configurable samplers: top-k, top-p, min-p, temperature, and seed.
-5. Add model/device information commands.
-6. Add an OpenAI-compatible HTTP server in Rust with Axum.
-7. Add embeddings.
-8. Add multimodal/vision support through llama.cpp `mtmd`.
-9. Add Android/Termux build presets.
-10. If the goal becomes a fully pure-Rust rewrite, replace llama.cpp/ggml components incrementally.
