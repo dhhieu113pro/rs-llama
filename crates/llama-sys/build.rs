@@ -177,6 +177,14 @@ fn emit_link_flags(dst: &Path, target: &str) {
         println!("cargo:rustc-link-lib=static=ggml-cpu");
     }
 
+    if cfg!(feature = "vulkan") {
+        if target.contains("windows") {
+            println!("cargo:rustc-link-lib=dylib=vulkan-1");
+        } else if !target.contains("apple") {
+            println!("cargo:rustc-link-lib=dylib=vulkan");
+        }
+    }
+
     if target.contains("windows") {
         println!("cargo:rustc-link-lib=dylib=advapi32");
         println!("cargo:rustc-link-lib=dylib=user32");
