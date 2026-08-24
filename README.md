@@ -1,11 +1,12 @@
 # llama-rust
 
-A small Rust CLI for running GGUF language models through `llama.cpp` using the maintained [`llama-cpp-2`](https://crates.io/crates/llama-cpp-2) bindings.
+A Rust **library and CLI** for running GGUF language models through `llama.cpp` using the maintained [`llama-cpp-2`](https://crates.io/crates/llama-cpp-2) bindings.
 
 The application layer and orchestration are written in Rust, while `llama.cpp` provides the low-level model loading and inference backend.
 
 ## Features
 
+- Reusable `LlamaEngine` library for other Rust projects
 - Run local GGUF models
 - Download GGUF models directly from Hugging Face
 - Cache downloaded models locally
@@ -15,6 +16,56 @@ The application layer and orchestration are written in Rust, while `llama.cpp` p
 - Optional CUDA, Vulkan, and Metal builds
 - Configurable context size, CPU threads, GPU layers, and generation length
 - GitHub Actions CI that builds on Ubuntu and smoke-tests real GGUF inference
+
+## Use as a library
+
+This crate is both a binary (`llama-rust`) and a library (`llama_rust`).
+
+Add it from Git (not published to crates.io yet):
+
+```toml
+[dependencies]
+llama-rust = { git = "https://github.com/dhhieu113pro/llama-rust" }
+```
+
+Optional GPU features:
+
+```toml
+llama-rust = { git = "https://github.com/dhhieu113pro/llama-rust", features = ["cuda"] }
+```
+
+Example:
+
+```rust
+use llama_rust::{download_huggingface_model, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
+
+fn main() -> anyhow::Result<()> {
+    let model_path = download_huggingface_model(&HfDownload::new(
+        "mradermacher/SmolLM2-135M-Instruct-GGUF",
+        "SmolLM2-135M-Instruct.Q4_K_M.gguf",
+    ))?;
+
+    let engine = LlamaEngine::load(
+        EngineConfig::new(model_path)
+            .with_ctx_size(512)
+            .with_threads(2),
+    )?;
+
+    let text = engine.generate(
+        &GenerateRequest::new("Write one sentence about Rust.").with_max_tokens(32),
+    )?;
+    println!("{text}");
+    Ok(())
+}
+```
+
+Public API:
+
+- `LlamaEngine::load` / `generate` / `generate_to_writer` / `generate_with_callback`
+- `EngineConfig` and `GenerateRequest`
+- `HfDownload`, `download_huggingface_model`, `resolve_model_path`
+
+The consuming project still needs a C/C++ compiler, CMake, and Clang/libclang because `llama.cpp` is compiled as part of the build.
 
 ## Requirements
 
@@ -258,7 +309,10 @@ You can also trigger it manually from the Actions tab (`workflow_dispatch`).
 ## Architecture
 
 ```text
-Rust CLI / API
+Your Rust project
+    |
+    v
+llama_rust library  +  llama-rust CLI
     |
     +--> Hugging Face downloader/cache
     |
@@ -279,9 +333,9 @@ llama.cpp / ggml
 
 ## Next milestones
 
-1. Extract inference into a reusable `LlamaEngine` Rust library.
+1. Publish to crates.io and slim the public API.
 2. Add chat-template support from GGUF metadata.
-3. Add streaming callbacks instead of writing directly to stdout.
+3. Add async/streaming helpers.
 4. Add configurable samplers: top-k, top-p, min-p, temperature, and seed.
 5. Add model/device information commands.
 6. Add an OpenAI-compatible HTTP server in Rust with Axum.
