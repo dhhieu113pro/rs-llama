@@ -1,0 +1,17 @@
+[package]
+name = "llama-sys"
+version = "0.1.0"
+edition = "2021"
+description = "Direct FFI bindings to llama.cpp"
+license = "MIT"
+links = "llama"
+
+[features]
+default = []
+cuda = []
+vulkan = []
+metal = []
+
+[build-dependencies]
+bindgen = "0.72"
+cmake = "0.1"

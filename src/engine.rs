@@ -1,14 +1,13 @@
-use std::io::{self, Write};
-use std::num::NonZeroU32;
+use std::ffi::CString;
+use std::io::Write;
+use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
+use std::ptr;
+use std::sync::Once;
 
 use anyhow::{bail, Context, Result};
-use llama_cpp_2::context::params::LlamaContextParams;
-use llama_cpp_2::llama_backend::LlamaBackend;
-use llama_cpp_2::llama_batch::LlamaBatch;
-use llama_cpp_2::model::params::LlamaModelParams;
-use llama_cpp_2::model::{AddBos, LlamaModel};
-use llama_cpp_2::sampling::LlamaSampler;
+
+static BACKEND: Once = Once::new();
 
 /// How to load a GGUF model.
 #[derive(Debug, Clone)]
@@ -86,13 +85,15 @@ impl GenerateRequest {
 
 /// Loaded GGUF model that can run multiple generations.
 pub struct LlamaEngine {
-    backend: LlamaBackend,
-    model: LlamaModel,
+    model: *mut llama_sys::llama_model,
     ctx_size: u32,
     threads: i32,
     model_path: PathBuf,
     mmproj_path: Option<PathBuf>,
 }
+
+unsafe impl Send for LlamaEngine {}
+unsafe impl Sync for LlamaEngine {}
 
 impl LlamaEngine {
     pub fn load(config: EngineConfig) -> Result<Self> {
@@ -102,13 +103,23 @@ impl LlamaEngine {
             }
         }
 
-        let backend = LlamaBackend::init().context("failed to initialize llama.cpp backend")?;
-        let model_params = make_model_params(config.gpu_layers);
-        let model = LlamaModel::load_from_file(&backend, &config.model_path, &model_params)
-            .with_context(|| format!("failed to load model: {}", config.model_path.display()))?;
+        BACKEND.call_once(|| unsafe {
+            llama_sys::llama_backend_init();
+        });
+
+        let path = CString::new(config.model_path.to_string_lossy().as_bytes())
+            .context("model path contains interior nul")?;
+
+        let model = unsafe {
+            let mut params = llama_sys::llama_model_default_params();
+            params.n_gpu_layers = config.gpu_layers as i32;
+            llama_sys::llama_model_load_from_file(path.as_ptr(), params)
+        };
+        if model.is_null() {
+            bail!("failed to load model: {}", config.model_path.display());
+        }
 
         Ok(Self {
-            backend,
             model,
             ctx_size: config.ctx_size,
             threads: config.threads,
@@ -129,12 +140,10 @@ impl LlamaEngine {
         self.mmproj_path.is_some()
     }
 
-    /// Generate text and return only the completion (not the prompt).
     pub fn generate(&self, request: &GenerateRequest) -> Result<String> {
         self.generate_with_callback(request, |_| {})
     }
 
-    /// Generate text and stream each decoded piece to `writer`.
     pub fn generate_to_writer(
         &self,
         request: &GenerateRequest,
@@ -146,7 +155,6 @@ impl LlamaEngine {
         })
     }
 
-    /// Generate text and call `on_piece` for every decoded fragment.
     pub fn generate_with_callback<F>(
         &self,
         request: &GenerateRequest,
@@ -164,81 +172,187 @@ impl LlamaEngine {
             }
         }
 
-        let n_ctx =
-            NonZeroU32::new(self.ctx_size).context("ctx-size must be greater than zero")?;
-        let mut ctx_params = LlamaContextParams::default().with_n_ctx(Some(n_ctx));
-
-        if self.threads > 0 {
-            ctx_params = ctx_params
-                .with_n_threads(self.threads)
-                .with_n_threads_batch(self.threads);
+        let prompt = vision_prompt(request, self.mmproj_path.as_deref());
+        let ctx = unsafe { self.new_context()? };
+        let vocab = unsafe { llama_sys::llama_model_get_vocab(self.model) };
+        if vocab.is_null() {
+            unsafe { llama_sys::llama_free(ctx) };
+            bail!("model has no vocab");
         }
 
-        let mut ctx = self
-            .model
-            .new_context(&self.backend, ctx_params)
-            .context("failed to create llama.cpp context")?;
-
-        let prompt = vision_prompt(request, self.mmproj_path.as_deref());
-        let prompt_tokens = self
-            .model
-            .str_to_token(&prompt, AddBos::Always)
-            .context("failed to tokenize prompt")?;
-
-        if prompt_tokens.is_empty() {
+        let tokens = match unsafe { tokenize(vocab, &prompt, true) } {
+            Ok(tokens) => tokens,
+            Err(err) => {
+                unsafe { llama_sys::llama_free(ctx) };
+                return Err(err);
+            }
+        };
+        if tokens.is_empty() {
+            unsafe { llama_sys::llama_free(ctx) };
             bail!("prompt produced no tokens");
         }
 
-        let max_total_tokens = prompt_tokens.len() as i32 + request.max_tokens;
-        if max_total_tokens > ctx.n_ctx() as i32 {
+        let n_ctx = unsafe { llama_sys::llama_n_ctx(ctx) } as i32;
+        if tokens.len() as i32 + request.max_tokens > n_ctx {
+            unsafe { llama_sys::llama_free(ctx) };
             bail!(
-                "prompt + max-tokens ({max_total_tokens}) exceeds context size ({})",
-                ctx.n_ctx()
+                "prompt + max-tokens ({}) exceeds context size ({n_ctx})",
+                tokens.len() as i32 + request.max_tokens
             );
         }
 
-        let mut batch = LlamaBatch::new(512, 1);
-        let last_prompt_index = prompt_tokens.len() - 1;
-
-        for (i, token) in prompt_tokens.iter().copied().enumerate() {
-            batch.add(token, i as i32, &[0], i == last_prompt_index)?;
-        }
-
-        ctx.decode(&mut batch).context("failed to decode prompt")?;
-
-        let mut sampler = LlamaSampler::chain_simple([
-            LlamaSampler::temp(request.temperature),
-            LlamaSampler::dist(request.seed),
-        ]);
-
-        let mut decoder = encoding_rs::UTF_8.new_decoder();
-        let mut position = prompt_tokens.len() as i32;
-        let mut generated = String::new();
-
-        for _ in 0..request.max_tokens {
-            let token = sampler.sample(&ctx, batch.n_tokens() - 1);
-            sampler.accept(token);
-
-            if self.model.is_eog_token(token) {
-                break;
-            }
-
-            let piece = self
-                .model
-                .token_to_piece(token, &mut decoder, true, None)?;
-            generated.push_str(&piece);
-            on_piece(&piece);
-
-            batch.clear();
-            batch.add(token, position, &[0], true)?;
-            ctx.decode(&mut batch)
-                .context("failed to decode generated token")?;
-            position += 1;
-        }
-
-        let _ = io::stdout();
-        Ok(generated)
+        let result = unsafe { generate_loop(ctx, vocab, &tokens, request, &mut on_piece) };
+        unsafe { llama_sys::llama_free(ctx) };
+        result
     }
+
+    unsafe fn new_context(&self) -> Result<*mut llama_sys::llama_context> {
+        let mut params = llama_sys::llama_context_default_params();
+        params.n_ctx = self.ctx_size;
+        params.n_batch = self.ctx_size.max(512);
+        if self.threads > 0 {
+            params.n_threads = self.threads;
+            params.n_threads_batch = self.threads;
+        }
+        let ctx = llama_sys::llama_init_from_model(self.model, params);
+        if ctx.is_null() {
+            bail!("failed to create llama.cpp context");
+        }
+        Ok(ctx)
+    }
+}
+
+impl Drop for LlamaEngine {
+    fn drop(&mut self) {
+        if !self.model.is_null() {
+            unsafe { llama_sys::llama_model_free(self.model) };
+            self.model = ptr::null_mut();
+        }
+    }
+}
+
+unsafe fn tokenize(
+    vocab: *const llama_sys::llama_vocab,
+    text: &str,
+    add_special: bool,
+) -> Result<Vec<llama_sys::llama_token>> {
+    let bytes = text.as_bytes();
+    let mut n_tokens = llama_sys::llama_tokenize(
+        vocab,
+        bytes.as_ptr() as *const c_char,
+        bytes.len() as i32,
+        ptr::null_mut(),
+        0,
+        add_special,
+        true,
+    );
+    if n_tokens == i32::MIN {
+        bail!("tokenize overflow");
+    }
+    if n_tokens < 0 {
+        n_tokens = -n_tokens;
+    }
+    let mut tokens = vec![0; n_tokens as usize];
+    let written = llama_sys::llama_tokenize(
+        vocab,
+        bytes.as_ptr() as *const c_char,
+        bytes.len() as i32,
+        tokens.as_mut_ptr(),
+        n_tokens,
+        add_special,
+        true,
+    );
+    if written < 0 {
+        bail!("failed to tokenize prompt");
+    }
+    tokens.truncate(written as usize);
+    Ok(tokens)
+}
+
+unsafe fn token_piece(
+    vocab: *const llama_sys::llama_vocab,
+    token: llama_sys::llama_token,
+) -> Result<String> {
+    let mut buf = vec![0u8; 256];
+    let n = llama_sys::llama_token_to_piece(
+        vocab,
+        token,
+        buf.as_mut_ptr() as *mut c_char,
+        buf.len() as i32,
+        0,
+        true,
+    );
+    if n < 0 {
+        buf.resize((-n) as usize, 0);
+        let n = llama_sys::llama_token_to_piece(
+            vocab,
+            token,
+            buf.as_mut_ptr() as *mut c_char,
+            buf.len() as i32,
+            0,
+            true,
+        );
+        if n < 0 {
+            bail!("failed to decode token");
+        }
+        buf.truncate(n as usize);
+    } else {
+        buf.truncate(n as usize);
+    }
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+unsafe fn generate_loop<F>(
+    ctx: *mut llama_sys::llama_context,
+    vocab: *const llama_sys::llama_vocab,
+    prompt_tokens: &[llama_sys::llama_token],
+    request: &GenerateRequest,
+    on_piece: &mut F,
+) -> Result<String>
+where
+    F: FnMut(&str),
+{
+    let mut tokens = prompt_tokens.to_vec();
+    let mut batch = llama_sys::llama_batch_get_one(tokens.as_mut_ptr(), tokens.len() as i32);
+    if llama_sys::llama_decode(ctx, batch) != 0 {
+        bail!("failed to decode prompt");
+    }
+
+    let sparams = llama_sys::llama_sampler_chain_default_params();
+    let smpl = llama_sys::llama_sampler_chain_init(sparams);
+    if smpl.is_null() {
+        bail!("failed to create sampler");
+    }
+    llama_sys::llama_sampler_chain_add(smpl, llama_sys::llama_sampler_init_temp(request.temperature));
+    llama_sys::llama_sampler_chain_add(smpl, llama_sys::llama_sampler_init_dist(request.seed));
+
+    let mut generated = String::new();
+    for _ in 0..request.max_tokens {
+        let token = llama_sys::llama_sampler_sample(smpl, ctx, -1);
+        llama_sys::llama_sampler_accept(smpl, token);
+        if llama_sys::llama_vocab_is_eog(vocab, token) {
+            break;
+        }
+        let piece = match token_piece(vocab, token) {
+            Ok(piece) => piece,
+            Err(err) => {
+                llama_sys::llama_sampler_free(smpl);
+                return Err(err);
+            }
+        };
+        generated.push_str(&piece);
+        on_piece(&piece);
+
+        let mut one = [token];
+        batch = llama_sys::llama_batch_get_one(one.as_mut_ptr(), 1);
+        if llama_sys::llama_decode(ctx, batch) != 0 {
+            llama_sys::llama_sampler_free(smpl);
+            bail!("failed to decode generated token");
+        }
+    }
+
+    llama_sys::llama_sampler_free(smpl);
+    Ok(generated)
 }
 
 fn vision_prompt(request: &GenerateRequest, mmproj: Option<&Path>) -> String {
@@ -251,20 +365,4 @@ fn vision_prompt(request: &GenerateRequest, mmproj: Option<&Path>) -> String {
         ),
         _ => request.prompt.clone(),
     }
-}
-
-fn make_model_params(gpu_layers: u32) -> LlamaModelParams {
-    let params = LlamaModelParams::default();
-
-    #[cfg(any(feature = "cuda", feature = "vulkan", feature = "metal"))]
-    {
-        if gpu_layers > 0 {
-            return params.with_n_gpu_layers(gpu_layers);
-        }
-    }
-
-    #[cfg(not(any(feature = "cuda", feature = "vulkan", feature = "metal")))]
-    let _ = gpu_layers;
-
-    params
 }
