@@ -218,6 +218,52 @@ jobs:
           find target -name rs-llama -type f | tee android-bins.txt
           test -s android-bins.txt
 
+  android-vision:
+    name: Vision smoke Android emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use latest stable Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add x86_64-linux-android
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake clang libclang-dev python3-pip
+          python3 -m pip install --user pillow || true
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+          add-to-path: false
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - run: cargo generate-lockfile
+      - name: Cross-compile x86_64-linux-android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: cargo ndk -t x86_64 --platform 28 build --release --bin rs-llama
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run vision smoke on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash scripts/android-vision-smoke.sh target/x86_64-linux-android/release/rs-llama
+
   termux-scripts:
     name: Check Termux scripts
     runs-on: ubuntu-latest
@@ -230,4 +276,5 @@ jobs:
           bash -n scripts/termux-build.sh
           bash -n scripts/termux-smoke.sh
           bash -n scripts/ci-vision-smoke.sh
-          shellcheck -e SC2164,SC1091 scripts/termux-build.sh scripts/termux-smoke.sh scripts/ci-vision-smoke.sh
+          bash -n scripts/android-vision-smoke.sh
+          shellcheck -e SC2164,SC1091 scripts/termux-build.sh scripts/termux-smoke.sh scripts/ci-vision-smoke.sh scripts/android-vision-smoke.sh
