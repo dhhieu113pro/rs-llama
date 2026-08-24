@@ -1,4 +1,4 @@
-﻿# llama-rust
+# llama-rust
 
 A small Rust CLI for running GGUF language models through `llama.cpp` using the maintained [`llama-cpp-2`](https://crates.io/crates/llama-cpp-2) bindings.
 
@@ -14,6 +14,7 @@ The application layer and orchestration are written in Rust, while `llama.cpp` p
 - CPU inference
 - Optional CUDA, Vulkan, and Metal builds
 - Configurable context size, CPU threads, GPU layers, and generation length
+- GitHub Actions CI that builds on Ubuntu and smoke-tests real GGUF inference
 
 ## Requirements
 
@@ -240,6 +241,19 @@ cargo run --release -- \
 ```
 
 On the first run, the model is downloaded into `models/`. Later runs reuse the downloaded GGUF file.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on push and pull request:
+
+1. Install CMake/Clang and a stable Rust toolchain
+2. `cargo build --release --locked`
+3. `cargo test --release --locked`
+4. Download `SmolLM2-135M-Instruct.Q4_K_M.gguf` (~105 MB) and generate a few tokens with the built binary
+
+The GGUF file is cached between CI runs. This is a CPU-only smoke test on `ubuntu-latest` (no CUDA/Vulkan/Metal runner).
+
+You can also trigger it manually from the Actions tab (`workflow_dispatch`).
 
 ## Architecture
 
