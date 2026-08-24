@@ -1,0 +1,15 @@
+{
+  "date": "2026-08-24",
+  "framework": "vanilla HTML/CSS/JS",
+  "font_stack": "none detected",
+  "palette": "none detected",
+  "motion": "motion-cut; no motion library",
+  "spacing": "none detected",
+  "preserve": [],
+  "introduce": [
+    "token system",
+    "component-playground macrostructure",
+    "microinteraction discipline",
+    "slop-test gates"
+  ]
+}
