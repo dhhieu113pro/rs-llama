@@ -90,10 +90,12 @@ jobs:
           "$BIN" \
             --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
             --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
-            --prompt "Write one short sentence about Rust." \
-            --max-tokens 24 \
+            --prompt "What is LED lamp?" \
+            --max-tokens 48 \
             --ctx-size 512 \
             --threads 2 \
             | tee smoke-output.txt
           test -s smoke-output.txt
           echo "Smoke test produced $(wc -c < smoke-output.txt) bytes of output"
+          echo "----- model output -----"
+          cat smoke-output.txt
