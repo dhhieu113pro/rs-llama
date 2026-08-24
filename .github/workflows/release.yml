@@ -22,15 +22,15 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
-            artifact: rs-llama-linux-x86_64
+            artifact: rs-llama-x86_64-unknown-linux-gnu
             binary: rs-llama
           - name: Windows x64
             os: windows-latest
-            artifact: rs-llama-windows-x86_64
+            artifact: rs-llama-x86_64-pc-windows-msvc
             binary: rs-llama.exe
-          - name: macOS
+          - name: macOS arm64
             os: macos-latest
-            artifact: rs-llama-macos
+            artifact: rs-llama-aarch64-apple-darwin
             binary: rs-llama
 
     runs-on: ${{ matrix.os }}
@@ -104,8 +104,6 @@ jobs:
             --threads 2 \
             | tee smoke-output.txt
           test -s smoke-output.txt
-          echo "----- model answer -----"
-          cat smoke-output.txt
           if ! grep -qiE 'led|light|diode|lamp|electric|bulb' smoke-output.txt; then
             echo "Smoke test did not answer the LED lamp question"
             exit 1
@@ -131,9 +129,45 @@ jobs:
           path: target/release/rs-llama.exe
           if-no-files-found: error
 
+  android:
+    name: Build Android aarch64
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use latest stable Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add aarch64-linux-android
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake clang libclang-dev
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+          add-to-path: false
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - run: cargo generate-lockfile
+      - name: Cross-compile aarch64-linux-android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK: ${{ steps.ndk.outputs.ndk-path }}
+        run: cargo ndk -t arm64-v8a -p 28 build --release --bin rs-llama
+      - name: Upload Android binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: tested-rs-llama-aarch64-linux-android
+          path: target/aarch64-linux-android/release/rs-llama
+          if-no-files-found: error
+
   package:
     name: Package binaries
-    needs: test
+    needs: [test, android]
     if: success() && (github.event_name != 'pull_request')
     runs-on: ubuntu-latest
 
@@ -151,37 +185,47 @@ jobs:
           mkdir -p dist
           ls -R bins
 
-          cp "bins/tested-rs-llama-linux-x86_64/rs-llama" dist/rs-llama
-          tar -C dist -czf rs-llama-linux-x86_64.tar.gz rs-llama
-          rm dist/rs-llama
+          pack_unix() {
+            local artifact="$1"
+            local src="bins/tested-${artifact}/rs-llama"
+            test -f "$src"
+            mkdir -p "pack/${artifact}"
+            cp "$src" "pack/${artifact}/rs-llama"
+            chmod +x "pack/${artifact}/rs-llama"
+            tar -C pack -czf "dist/${artifact}.tar.gz" "${artifact}"
+          }
 
-          cp "bins/tested-rs-llama-macos/rs-llama" dist/rs-llama
-          tar -C dist -czf rs-llama-macos.tar.gz rs-llama
-          rm dist/rs-llama
+          pack_unix rs-llama-x86_64-unknown-linux-gnu
+          pack_unix rs-llama-aarch64-apple-darwin
+          pack_unix rs-llama-aarch64-linux-android
 
-          cp "bins/tested-rs-llama-windows-x86_64/rs-llama.exe" dist/rs-llama.exe
+          mkdir -p pack/rs-llama-x86_64-pc-windows-msvc
+          cp bins/tested-rs-llama-x86_64-pc-windows-msvc/rs-llama.exe pack/rs-llama-x86_64-pc-windows-msvc/rs-llama.exe
           python3 - <<'PY'
           import zipfile
-          with zipfile.ZipFile('rs-llama-windows-x86_64.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
-              zf.write('dist/rs-llama.exe', 'rs-llama.exe')
+          with zipfile.ZipFile('dist/rs-llama-x86_64-pc-windows-msvc.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
+              zf.write('pack/rs-llama-x86_64-pc-windows-msvc/rs-llama.exe', 'rs-llama-x86_64-pc-windows-msvc/rs-llama.exe')
           PY
-          rm dist/rs-llama.exe
-          mv rs-llama-linux-x86_64.tar.gz rs-llama-macos.tar.gz rs-llama-windows-x86_64.zip dist/
+
+          (cd dist && sha256sum * > SHA256SUMS)
           ls -lah dist
+          cat dist/SHA256SUMS
 
       - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4
         with:
           name: rs-llama-packages
           path: |
-            dist/rs-llama-linux-x86_64.tar.gz
-            dist/rs-llama-macos.tar.gz
-            dist/rs-llama-windows-x86_64.zip
+            dist/rs-llama-x86_64-unknown-linux-gnu.tar.gz
+            dist/rs-llama-aarch64-apple-darwin.tar.gz
+            dist/rs-llama-x86_64-pc-windows-msvc.zip
+            dist/rs-llama-aarch64-linux-android.tar.gz
+            dist/SHA256SUMS
           if-no-files-found: error
 
   release:
     name: Publish GitHub Release
-    needs: [test, package]
+    needs: [test, android, package]
     if: success() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -195,7 +239,7 @@ jobs:
           path: dist
 
       - name: Show release files
-        run: ls -lah dist
+        run: ls -lah dist && cat dist/SHA256SUMS
 
       - name: Create GitHub Release
         env:
