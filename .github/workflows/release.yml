@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build ${{ matrix.name }}
+  test:
+    name: Test ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
@@ -23,12 +23,15 @@ jobs:
           - name: Linux x64
             os: ubuntu-latest
             artifact: rs-llama-linux-x86_64
+            binary: rs-llama
           - name: Windows x64
             os: windows-latest
             artifact: rs-llama-windows-x86_64
+            binary: rs-llama.exe
           - name: macOS
             os: macos-latest
             artifact: rs-llama-macos
+            binary: rs-llama
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -101,60 +104,84 @@ jobs:
           test -s smoke-output.txt
           echo "Smoke test produced $(wc -c < smoke-output.txt) bytes of output"
 
-      - name: Package Linux binary
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          mkdir -p dist
-          cp target/release/rs-llama dist/rs-llama
-          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" rs-llama
-
-      - name: Package macOS binary
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          mkdir -p dist
-          cp target/release/rs-llama dist/rs-llama
-          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" rs-llama
-
-      - name: Package Windows binary
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target\release\rs-llama.exe dist\rs-llama.exe
-          Compress-Archive -Path dist\rs-llama.exe -DestinationPath "${{ matrix.artifact }}.zip"
-
-      - name: Upload Linux/macOS artifact
+      - name: Upload tested Linux/macOS binary
         if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          name: tested-${{ matrix.artifact }}
+          path: target/release/rs-llama
           if-no-files-found: error
 
-      - name: Upload Windows artifact
+      - name: Upload tested Windows binary
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.zip
+          name: tested-${{ matrix.artifact }}
+          path: target/release/rs-llama.exe
+          if-no-files-found: error
+
+  package:
+    name: Package binaries
+    needs: test
+    if: success() && (github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download tested binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tested-*
+          path: bins
+          merge-multiple: false
+
+      - name: Package release archives
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ls -R bins
+
+          cp "bins/tested-rs-llama-linux-x86_64/rs-llama" dist/rs-llama
+          tar -C dist -czf rs-llama-linux-x86_64.tar.gz rs-llama
+          rm dist/rs-llama
+
+          cp "bins/tested-rs-llama-macos/rs-llama" dist/rs-llama
+          tar -C dist -czf rs-llama-macos.tar.gz rs-llama
+          rm dist/rs-llama
+
+          cp "bins/tested-rs-llama-windows-x86_64/rs-llama.exe" dist/rs-llama.exe
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('rs-llama-windows-x86_64.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
+              zf.write('dist/rs-llama.exe', 'rs-llama.exe')
+          PY
+          rm dist/rs-llama.exe
+          mv rs-llama-linux-x86_64.tar.gz rs-llama-macos.tar.gz rs-llama-windows-x86_64.zip dist/
+          ls -lah dist
+
+      - name: Upload packaged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rs-llama-packages
+          path: |
+            dist/rs-llama-linux-x86_64.tar.gz
+            dist/rs-llama-macos.tar.gz
+            dist/rs-llama-windows-x86_64.zip
           if-no-files-found: error
 
   release:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [test, package]
+    if: success() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download build artifacts
+      - name: Download packaged artifacts
         uses: actions/download-artifact@v4
         with:
+          name: rs-llama-packages
           path: dist
-          merge-multiple: true
 
       - name: Show release files
         run: ls -lah dist
