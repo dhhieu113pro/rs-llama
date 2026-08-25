@@ -1,14 +1,16 @@
-use std::ffi::CStr;
+use std::ffi::{c_void, CStr};
 use std::fmt;
 use std::os::raw::c_char;
 use std::ptr;
 use std::sync::Once;
 
+type BackendDevice = *mut c_void;
+
 unsafe extern "C" {
     fn ggml_backend_dev_count() -> usize;
-    fn ggml_backend_dev_get(index: usize) -> llama_sys::ggml_backend_dev_t;
-    fn ggml_backend_dev_name(device: llama_sys::ggml_backend_dev_t) -> *const c_char;
-    fn ggml_backend_dev_description(device: llama_sys::ggml_backend_dev_t) -> *const c_char;
+    fn ggml_backend_dev_get(index: usize) -> BackendDevice;
+    fn ggml_backend_dev_name(device: BackendDevice) -> *const c_char;
+    fn ggml_backend_dev_description(device: BackendDevice) -> *const c_char;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +44,7 @@ pub struct RuntimeDevice {
 
 pub(crate) struct DeviceCandidate {
     pub backend: RuntimeBackend,
-    pub devices: Vec<llama_sys::ggml_backend_dev_t>,
+    pub devices: Vec<BackendDevice>,
 }
 
 pub(crate) struct DevicePlan {
@@ -81,7 +83,7 @@ pub(crate) fn device_plan_for_model(gpu_layers: u32) -> DevicePlan {
         let priorities = [RuntimeBackend::Cuda, RuntimeBackend::Vulkan];
 
         for preferred in priorities {
-            let mut devices: Vec<llama_sys::ggml_backend_dev_t> = raw
+            let mut devices: Vec<BackendDevice> = raw
                 .iter()
                 .filter(|(_, device)| device.is_gpu && device.backend == preferred)
                 .map(|(raw, _)| *raw)
@@ -108,7 +110,7 @@ pub(crate) fn device_plan_for_model(gpu_layers: u32) -> DevicePlan {
     }
 }
 
-unsafe fn enumerate_raw_devices() -> Vec<(llama_sys::ggml_backend_dev_t, RuntimeDevice)> {
+unsafe fn enumerate_raw_devices() -> Vec<(BackendDevice, RuntimeDevice)> {
     let mut result = Vec::new();
     let count = ggml_backend_dev_count();
 
