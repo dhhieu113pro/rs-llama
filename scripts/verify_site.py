@@ -2,7 +2,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-SITE = ROOT / "site"
+SITE = ROOT / "docs"
 paths = {name: SITE / name for name in ("index.html", "tokens.css", "styles.css", "app.js")}
 missing = [str(p.relative_to(ROOT)) for p in paths.values() if not p.exists()]
 if missing:
