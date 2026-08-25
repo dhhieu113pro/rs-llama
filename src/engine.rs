@@ -6,7 +6,7 @@ use std::ptr;
 
 use anyhow::{bail, Context, Result};
 
-use crate::runtime_backend::{select_devices_for_model, RuntimeBackend, RuntimeDevice};
+use crate::runtime_backend::{device_plan_for_model, RuntimeBackend, RuntimeDevice};
 
 /// Offload all model layers that llama.cpp can place on the selected GPU backend.
 pub const DEFAULT_GPU_LAYERS: u32 = 999;
@@ -114,21 +114,34 @@ impl LlamaEngine {
             }
         }
 
-        let mut selected = select_devices_for_model(config.gpu_layers);
+        let mut plan = device_plan_for_model(config.gpu_layers);
         let path = CString::new(config.model_path.to_string_lossy().as_bytes())
             .context("model path contains interior nul")?;
 
-        let model = unsafe {
-            let mut params = llama_sys::llama_model_default_params();
-            params.n_gpu_layers = config.gpu_layers as i32;
-            if !selected.devices.is_empty() {
-                params.devices = selected.devices.as_mut_ptr();
+        let mut loaded = None;
+        for candidate in &mut plan.candidates {
+            let model = unsafe {
+                let mut params = llama_sys::llama_model_default_params();
+                params.n_gpu_layers = if candidate.backend == RuntimeBackend::Cpu {
+                    0
+                } else {
+                    config.gpu_layers as i32
+                };
+                if !candidate.devices.is_empty() {
+                    params.devices = candidate.devices.as_mut_ptr();
+                }
+                llama_sys::llama_model_load_from_file(path.as_ptr(), params)
+            };
+
+            if !model.is_null() {
+                loaded = Some((model, candidate.backend.clone()));
+                break;
             }
-            llama_sys::llama_model_load_from_file(path.as_ptr(), params)
-        };
-        if model.is_null() {
-            bail!("failed to load model: {}", config.model_path.display());
         }
+
+        let Some((model, active_backend)) = loaded else {
+            bail!("failed to load model: {}", config.model_path.display());
+        };
 
         Ok(Self {
             model,
@@ -136,8 +149,8 @@ impl LlamaEngine {
             threads: config.threads,
             model_path: config.model_path,
             mmproj_path: config.mmproj_path,
-            active_backend: selected.backend,
-            runtime_devices: selected.snapshot,
+            active_backend,
+            runtime_devices: plan.snapshot,
         })
     }
 
