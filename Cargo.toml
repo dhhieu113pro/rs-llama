@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "rs-llama"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 description = "Rust library and CLI for running GGUF models through llama.cpp"
 license = "MIT"

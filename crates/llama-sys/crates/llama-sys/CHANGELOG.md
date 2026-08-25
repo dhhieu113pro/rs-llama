@@ -1,8 +1,6 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-## [0.2.0](https://github.com/dhhieu113pro/rs-llama/compare/rs-llama-v0.1.2...rs-llama-v0.2.0) (2026-08-25)
+## [0.2.0](https://github.com/dhhieu113pro/rs-llama/compare/rs-llama-sys-v0.1.2...rs-llama-sys-v0.2.0) (2026-08-25)
 
 
 ### Features
@@ -11,10 +9,7 @@ All notable changes to this project will be documented in this file.
 * auto-select llama.cpp GPU backend ([1b888ea](https://github.com/dhhieu113pro/rs-llama/commit/1b888ea7cc403d690ce28d1f1ed07f1481897a8b))
 * define Vulkan toolchain readiness policy ([efc72b6](https://github.com/dhhieu113pro/rs-llama/commit/efc72b6b5ea6e4f1d6b29a01aa11df22f08e9294))
 * expose compiled backend metadata ([96e36fc](https://github.com/dhhieu113pro/rs-llama/commit/96e36fc5510af9767d4d3535e49ac768d263d108))
-* expose selected backend in public API ([c7e54b8](https://github.com/dhhieu113pro/rs-llama/commit/c7e54b8ffc7561b8b636253ff52d5ca5aeecf891))
 * implement backend selection policy ([43dc52a](https://github.com/dhhieu113pro/rs-llama/commit/43dc52ad2ceb8f903695e130df741bea3ee3e5c4))
-* offload model layers to GPU by default ([8129cb6](https://github.com/dhhieu113pro/rs-llama/commit/8129cb65419a93136bc33c388f3d02c5b68c111f))
-* report auto-selected backend in CLI ([fb6ea2f](https://github.com/dhhieu113pro/rs-llama/commit/fb6ea2fdab7814861645ea53336850e9c9857e24))
 
 
 ### Bug Fixes
@@ -23,21 +18,6 @@ All notable changes to this project will be documented in this file.
 * bump version to 0.1.2 for crates.io publish ([61354c9](https://github.com/dhhieu113pro/rs-llama/commit/61354c98b55abaf792edfd83aecca5a2018fe113))
 * disable OpenMP on Windows to fix ARM64 linking ([eefbb38](https://github.com/dhhieu113pro/rs-llama/commit/eefbb382e68cfe758c99fba8ed54a04c8dfce9d8))
 * disable OpenMP on Windows to fix ARM64 linking ([855fc2a](https://github.com/dhhieu113pro/rs-llama/commit/855fc2a011a082164caacefefb2a4f803f07d3c4))
-* **pages:** publish landing page from docs ([bc61fd3](https://github.com/dhhieu113pro/rs-llama/commit/bc61fd35cc8e72a2c73495f8af7f9f98d9fb6ca1))
-* **pages:** publish landing page from docs ([c81ec96](https://github.com/dhhieu113pro/rs-llama/commit/c81ec9607a696a2859dfc49e8cb62edae06e7f49))
 * require complete Vulkan toolchain for auto selection ([3c96381](https://github.com/dhhieu113pro/rs-llama/commit/3c96381a15d33c5566db5f773b261408229fbbd7))
 * use detected GPU SDK paths for linking ([35e6dc5](https://github.com/dhhieu113pro/rs-llama/commit/35e6dc549bf7184753423dc86855ab0c548c29a3))
 * **windows:** pass MSVC include paths to bindgen (stdbool.h not found) ([ee381a5](https://github.com/dhhieu113pro/rs-llama/commit/ee381a5331bbc4bf4ef6e365c6eb45f36dda85a6))
-
-## [0.1.2] - 2026-08-24
-
-### Fixed
-
-- Refresh Cargo.lock before crates.io publish so `--locked` succeeds
-- Align crate versions with intended release tag
-
-## [0.1.1] - 2026-08-24
-
-### Notes
-
-- Initial tracked release baseline for release-please.
