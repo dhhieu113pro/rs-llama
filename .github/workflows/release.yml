@@ -109,6 +109,8 @@ jobs:
         run: cargo generate-lockfile
 
       - name: Run default/static unit tests
+        env:
+          RS_LLAMA_BACKEND: cpu
         run: cargo test --release
 
       - name: Build dynamic release bundle
