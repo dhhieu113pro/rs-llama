@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 use rs_llama::{
-    backend_selection_source, compiled_backend, resolve_model_files, EngineConfig, GenerateRequest,
-    HfDownload, LlamaEngine, DEFAULT_GPU_LAYERS,
+    resolve_model_files, EngineConfig, GenerateRequest, HfDownload, LlamaEngine,
+    DEFAULT_GPU_LAYERS,
 };
 
 #[derive(Parser, Debug)]
@@ -93,12 +93,6 @@ fn main() -> Result<()> {
 fn run() -> Result<()> {
     let args = Args::parse();
 
-    eprintln!(
-        "Backend: {} ({})",
-        compiled_backend().to_ascii_uppercase(),
-        backend_selection_source()
-    );
-
     let hf = match (&args.hf_repo, &args.hf_file) {
         (Some(repo), Some(file)) => Some(HfDownload {
             repo: repo.clone(),
@@ -126,6 +120,11 @@ fn run() -> Result<()> {
         config = config.with_mmproj(mmproj);
     }
     let engine = LlamaEngine::load(config)?;
+
+    eprintln!("Backend: {}", engine.active_backend());
+    for device in engine.runtime_devices() {
+        eprintln!("Device: {} — {}", device.name, device.description);
+    }
 
     let mut request = GenerateRequest::new(&args.prompt)
         .with_max_tokens(args.max_tokens)
