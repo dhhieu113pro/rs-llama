@@ -30,27 +30,50 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let target = env::var("TARGET").unwrap_or_default();
-    let selection = detect_backend(&target).unwrap_or_else(|err| panic!("{err}"));
+    let dynamic_backends = cfg!(feature = "dynamic-backends");
 
-    println!(
-        "cargo:warning=rs-llama backend: {} ({})",
-        selection.backend.as_str(),
-        selection.source.as_str()
-    );
-    println!(
-        "cargo:rustc-env=RS_LLAMA_COMPILED_BACKEND={}",
-        selection.backend.as_str()
-    );
-    println!(
-        "cargo:rustc-env=RS_LLAMA_BACKEND_SOURCE={}",
-        selection.source.as_str()
-    );
+    backend::validate_build_mode(
+        dynamic_backends,
+        cfg!(feature = "cuda"),
+        cfg!(feature = "vulkan"),
+        cfg!(feature = "metal"),
+    )
+    .unwrap_or_else(|err| panic!("{err}"));
+
+    let selection = if dynamic_backends {
+        Selection {
+            backend: Backend::Cpu,
+            source: backend::SelectionSource::Auto,
+        }
+    } else {
+        detect_backend(&target).unwrap_or_else(|err| panic!("{err}"))
+    };
+
+    if dynamic_backends {
+        println!("cargo:warning=rs-llama backend mode: dynamic runtime loading");
+        println!("cargo:rustc-env=RS_LLAMA_COMPILED_BACKEND=dynamic");
+        println!("cargo:rustc-env=RS_LLAMA_BACKEND_SOURCE=runtime");
+    } else {
+        println!(
+            "cargo:warning=rs-llama backend: {} ({})",
+            selection.backend.as_str(),
+            selection.source.as_str()
+        );
+        println!(
+            "cargo:rustc-env=RS_LLAMA_COMPILED_BACKEND={}",
+            selection.backend.as_str()
+        );
+        println!(
+            "cargo:rustc-env=RS_LLAMA_BACKEND_SOURCE={}",
+            selection.source.as_str()
+        );
+    }
 
     let src_dir = llama_src_dir(&out_dir);
-    let dst = build_llama(&src_dir, &target, selection.backend);
+    let dst = build_llama(&src_dir, &target, selection.backend, dynamic_backends);
 
     generate_bindings(&src_dir, &out_dir, &target);
-    emit_link_flags(&dst, &target, selection.backend);
+    emit_link_flags(&dst, &target, selection.backend, dynamic_backends);
 }
 
 fn detect_backend(target: &str) -> Result<Selection, String> {
@@ -281,13 +304,15 @@ fn android_abi(target: &str) -> &'static str {
     }
 }
 
-fn build_llama(src: &Path, target: &str, backend: Backend) -> PathBuf {
+fn build_llama(src: &Path, target: &str, backend: Backend, dynamic_backends: bool) -> PathBuf {
     let mut config = cmake::Config::new(src);
     config
         .profile("Release")
-        .define("BUILD_SHARED_LIBS", "OFF")
+        .define("BUILD_SHARED_LIBS", if dynamic_backends { "ON" } else { "OFF" })
+        .define("GGML_BACKEND_DL", if dynamic_backends { "ON" } else { "OFF" })
         .define("GGML_NATIVE", "OFF")
         .define("GGML_CCACHE", "OFF")
+        .define("GGML_CPU", "ON")
         .define("GGML_CUDA", "OFF")
         .define("GGML_VULKAN", "OFF")
         .define("GGML_METAL", "OFF")
@@ -299,17 +324,28 @@ fn build_llama(src: &Path, target: &str, backend: Backend) -> PathBuf {
         .define("LLAMA_BUILD_APP", "OFF")
         .define("LLAMA_CURL", "OFF");
 
-    match backend {
-        Backend::Cuda => {
+    if dynamic_backends {
+        if target.contains("android") {
+            // CPU only for Android in the first dynamic release milestone.
+        } else if target.contains("apple") {
+            config.define("GGML_METAL", "ON");
+        } else {
             config.define("GGML_CUDA", "ON");
-        }
-        Backend::Vulkan => {
             config.define("GGML_VULKAN", "ON");
         }
-        Backend::Metal if !target.contains("android") => {
-            config.define("GGML_METAL", "ON");
+    } else {
+        match backend {
+            Backend::Cuda => {
+                config.define("GGML_CUDA", "ON");
+            }
+            Backend::Vulkan => {
+                config.define("GGML_VULKAN", "ON");
+            }
+            Backend::Metal if !target.contains("android") => {
+                config.define("GGML_METAL", "ON");
+            }
+            Backend::Cpu | Backend::Metal => {}
         }
-        Backend::Cpu | Backend::Metal => {}
     }
 
     if target.contains("android") {
@@ -323,8 +359,6 @@ fn build_llama(src: &Path, target: &str, backend: Backend) -> PathBuf {
             .define("GGML_OPENMP", "OFF");
     }
 
-    // Windows (especially ARM64) often fails to link OpenMP runtime (__kmpc_* symbols).
-    // Disable it for reliability, matching the Android approach.
     if target.contains("windows") {
         config.define("GGML_OPENMP", "OFF");
     }
@@ -337,7 +371,6 @@ fn build_llama(src: &Path, target: &str, backend: Backend) -> PathBuf {
 fn msvc_include_paths(out_dir: &Path) -> Vec<String> {
     let mut paths = Vec::new();
 
-    // Prefer INCLUDE already set (Developer Prompt / vcvars / CI).
     if let Ok(include) = env::var("INCLUDE") {
         for p in include
             .split(';')
@@ -351,7 +384,6 @@ fn msvc_include_paths(out_dir: &Path) -> Vec<String> {
         }
     }
 
-    // Otherwise ask the `cc` crate — it bootstraps the MSVC environment.
     let dummy = out_dir.join("bindgen_dummy.c");
     if fs::write(&dummy, "int main(void) { return 0; }").is_ok() {
         let mut build = cc::Build::new();
@@ -403,8 +435,6 @@ fn generate_bindings(src: &Path, out_dir: &Path, target: &str) {
         }
     }
 
-    // Windows MSVC: libclang does not inherit MSVC system includes by default,
-    // which causes fatal errors like "stdbool.h file not found" in ggml.h.
     if target.contains("windows") && target.contains("msvc") {
         for include in msvc_include_paths(out_dir) {
             builder = builder.clang_arg("-isystem").clang_arg(include);
@@ -422,10 +452,12 @@ fn generate_bindings(src: &Path, out_dir: &Path, target: &str) {
         .expect("failed to write bindings.rs");
 }
 
-fn emit_link_flags(dst: &Path, target: &str, backend: Backend) {
+fn emit_link_flags(dst: &Path, target: &str, backend: Backend, dynamic_backends: bool) {
     let search_dirs = [
         dst.join("lib"),
         dst.join("lib64"),
+        dst.join("bin"),
+        dst.join("build/bin"),
         dst.join("build/src"),
         dst.join("build/ggml/src"),
         dst.join("build/ggml/src/ggml-cpu"),
@@ -439,37 +471,49 @@ fn emit_link_flags(dst: &Path, target: &str, backend: Backend) {
         }
     }
 
-    let mut linked = std::collections::BTreeSet::new();
-    for dir in &search_dirs {
-        if !dir.exists() {
-            continue;
+    if dynamic_backends {
+        println!("cargo:rustc-link-lib=dylib=llama");
+        println!("cargo:rustc-link-lib=dylib=ggml");
+        println!("cargo:rustc-link-lib=dylib=ggml-base");
+
+        if target.contains("apple") {
+            println!("cargo:rustc-link-arg=-Wl,-rpath,@loader_path");
+        } else if !target.contains("windows") && !target.contains("android") {
+            println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
         }
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                if let Some(lib) = static_lib_name(&name) {
-                    if linked.insert(lib.to_string()) {
-                        println!("cargo:rustc-link-lib=static={lib}");
+    } else {
+        let mut linked = std::collections::BTreeSet::new();
+        for dir in &search_dirs {
+            if !dir.exists() {
+                continue;
+            }
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    if let Some(lib) = static_lib_name(&name) {
+                        if linked.insert(lib.to_string()) {
+                            println!("cargo:rustc-link-lib=static={lib}");
+                        }
                     }
                 }
             }
         }
-    }
 
-    if linked.is_empty() {
-        println!("cargo:rustc-link-lib=static=llama");
-        println!("cargo:rustc-link-lib=static=ggml");
-        println!("cargo:rustc-link-lib=static=ggml-base");
-        println!("cargo:rustc-link-lib=static=ggml-cpu");
-    }
+        if linked.is_empty() {
+            println!("cargo:rustc-link-lib=static=llama");
+            println!("cargo:rustc-link-lib=static=ggml");
+            println!("cargo:rustc-link-lib=static=ggml-base");
+            println!("cargo:rustc-link-lib=static=ggml-cpu");
+        }
 
-    if backend == Backend::Vulkan {
-        emit_vulkan_link_flags(target);
-    }
+        if backend == Backend::Vulkan {
+            emit_vulkan_link_flags(target);
+        }
 
-    if backend == Backend::Cuda {
-        emit_cuda_link_flags(target);
+        if backend == Backend::Cuda {
+            emit_cuda_link_flags(target);
+        }
     }
 
     if target.contains("windows") {
@@ -480,7 +524,7 @@ fn emit_link_flags(dst: &Path, target: &str, backend: Backend) {
         println!("cargo:rustc-link-lib=dylib=c++");
         println!("cargo:rustc-link-lib=framework=Accelerate");
         println!("cargo:rustc-link-lib=framework=Foundation");
-        if backend == Backend::Metal {
+        if !dynamic_backends && backend == Backend::Metal {
             println!("cargo:rustc-link-lib=framework=Metal");
             println!("cargo:rustc-link-lib=framework=MetalKit");
         }
@@ -495,7 +539,9 @@ fn emit_link_flags(dst: &Path, target: &str, backend: Backend) {
         println!("cargo:rustc-link-lib=dylib=pthread");
         println!("cargo:rustc-link-lib=dylib=dl");
         println!("cargo:rustc-link-lib=dylib=m");
-        println!("cargo:rustc-link-lib=dylib=gomp");
+        if !dynamic_backends {
+            println!("cargo:rustc-link-lib=dylib=gomp");
+        }
     }
 }
 
