@@ -121,10 +121,7 @@ unsafe fn enumerate_raw_devices() -> Vec<(llama_sys::ggml_backend_dev_t, Runtime
         let name = c_string(ggml_backend_dev_name(device));
         let description = c_string(ggml_backend_dev_description(device));
         let backend = classify_backend(&name);
-        let is_gpu = matches!(
-            backend,
-            RuntimeBackend::Cuda | RuntimeBackend::Vulkan | RuntimeBackend::Metal
-        );
+        let is_gpu = is_gpu_backend(&backend);
 
         result.push((
             device,
@@ -138,6 +135,13 @@ unsafe fn enumerate_raw_devices() -> Vec<(llama_sys::ggml_backend_dev_t, Runtime
     }
 
     result
+}
+
+fn is_gpu_backend(backend: &RuntimeBackend) -> bool {
+    matches!(
+        backend,
+        RuntimeBackend::Cuda | RuntimeBackend::Vulkan | RuntimeBackend::Metal
+    )
 }
 
 unsafe fn c_string(value: *const c_char) -> String {
@@ -180,5 +184,14 @@ mod tests {
             classify_backend("SYCL0"),
             RuntimeBackend::Other("SYCL0".to_string())
         );
+    }
+
+    #[test]
+    fn only_supported_gpu_backends_are_marked_as_gpu() {
+        assert!(is_gpu_backend(&RuntimeBackend::Cuda));
+        assert!(is_gpu_backend(&RuntimeBackend::Vulkan));
+        assert!(is_gpu_backend(&RuntimeBackend::Metal));
+        assert!(!is_gpu_backend(&RuntimeBackend::Cpu));
+        assert!(!is_gpu_backend(&RuntimeBackend::Other("SYCL".into())));
     }
 }
