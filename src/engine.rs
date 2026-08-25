@@ -3,11 +3,10 @@ use std::io::Write;
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 use std::ptr;
-use std::sync::Once;
 
 use anyhow::{bail, Context, Result};
 
-static BACKEND: Once = Once::new();
+use crate::runtime_backend::{select_devices_for_model, RuntimeBackend, RuntimeDevice};
 
 /// Offload all model layers that llama.cpp can place on the selected GPU backend.
 pub const DEFAULT_GPU_LAYERS: u32 = 999;
@@ -100,6 +99,8 @@ pub struct LlamaEngine {
     threads: i32,
     model_path: PathBuf,
     mmproj_path: Option<PathBuf>,
+    active_backend: RuntimeBackend,
+    runtime_devices: Vec<RuntimeDevice>,
 }
 
 unsafe impl Send for LlamaEngine {}
@@ -113,16 +114,16 @@ impl LlamaEngine {
             }
         }
 
-        BACKEND.call_once(|| unsafe {
-            llama_sys::llama_backend_init();
-        });
-
+        let mut selected = select_devices_for_model(config.gpu_layers);
         let path = CString::new(config.model_path.to_string_lossy().as_bytes())
             .context("model path contains interior nul")?;
 
         let model = unsafe {
             let mut params = llama_sys::llama_model_default_params();
             params.n_gpu_layers = config.gpu_layers as i32;
+            if !selected.devices.is_empty() {
+                params.devices = selected.devices.as_mut_ptr();
+            }
             llama_sys::llama_model_load_from_file(path.as_ptr(), params)
         };
         if model.is_null() {
@@ -135,6 +136,8 @@ impl LlamaEngine {
             threads: config.threads,
             model_path: config.model_path,
             mmproj_path: config.mmproj_path,
+            active_backend: selected.backend,
+            runtime_devices: selected.snapshot,
         })
     }
 
@@ -148,6 +151,14 @@ impl LlamaEngine {
 
     pub fn is_vision_model(&self) -> bool {
         self.mmproj_path.is_some()
+    }
+
+    pub fn active_backend(&self) -> &RuntimeBackend {
+        &self.active_backend
+    }
+
+    pub fn runtime_devices(&self) -> &[RuntimeDevice] {
+        &self.runtime_devices
     }
 
     pub fn generate(&self, request: &GenerateRequest) -> Result<String> {
