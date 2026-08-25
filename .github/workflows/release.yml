@@ -10,6 +10,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: build-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -238,7 +242,7 @@ jobs:
           with zipfile.ZipFile('dist/rs-llama-windows-x86_64.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
               for path in root.rglob('*'):
                   if path.is_file():
-                      zf.write(path, path.as_posix())
+                      zf.write(path, path.relative_to(root.parent).as_posix())
           PY
 
           unzip -l dist/rs-llama-windows-x86_64.zip | grep -Ei 'ggml-cpu'
