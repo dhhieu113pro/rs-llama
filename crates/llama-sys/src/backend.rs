@@ -51,6 +51,15 @@ pub struct SelectionInput<'a> {
     pub vulkan_available: bool,
 }
 
+/// Whether the Vulkan build prerequisites required by llama.cpp are all present.
+pub const fn vulkan_toolchain_ready(
+    vulkan_loader: bool,
+    glslc: bool,
+    spirv_headers: bool,
+) -> bool {
+    vulkan_loader && glslc && spirv_headers
+}
+
 pub fn select_backend(input: SelectionInput<'_>) -> Result<Selection, String> {
     let feature_count = [
         input.feature_cuda,
