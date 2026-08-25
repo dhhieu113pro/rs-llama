@@ -4,7 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="rs-llama is a Rust library and CLI for running GGUF models through llama.cpp.">
+  <meta name="color-scheme" content="light dark">
   <title>rs-llama — Run llama.cpp from Rust</title>
+  <link rel="icon" href="./logo.svg" type="image/svg+xml">
+  <script>(() => { try { const t = localStorage.getItem('site-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {} })();</script>
   <link rel="stylesheet" href="./tokens.css">
   <link rel="stylesheet" href="./styles.css">
   <script src="./app.js" defer></script>
@@ -14,7 +17,7 @@
 
   <header class="site-header">
     <a class="brand" href="#top" aria-label="rs-llama home">
-      <span class="brand-mark" aria-hidden="true">rs</span>
+      <img class="brand-logo" src="./logo.svg" alt="rs-llama logo">
       <span>rs-llama</span>
     </a>
     <nav class="site-nav" aria-label="Primary navigation">
@@ -22,9 +25,7 @@
       <a href="#platforms">Platforms</a>
       <a href="https://github.com/dhhieu113pro/rs-llama">GitHub</a>
     </nav>
-    <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle color theme" title="Toggle color theme">
-      <span aria-hidden="true" id="theme-icon">◐</span>
-    </button>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Change color theme">Auto</button>
   </header>
 
   <main id="main">
@@ -32,7 +33,7 @@
       <div class="hero-copy">
         <p class="hero-note">Rust binding + CLI for llama.cpp</p>
         <h1 id="hero-title">Run llama.cpp from Rust.</h1>
-        <p class="hero-lede">Load GGUF models locally, download from Hugging Face, add vision with mmproj, and choose CPU, Vulkan, or Metal.</p>
+        <p class="hero-lede">Load GGUF models locally, download from Hugging Face, add vision with mmproj, and accelerate with CUDA, Vulkan, or Metal.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#examples">Get started</a>
           <a class="button button-secondary" href="https://github.com/dhhieu113pro/rs-llama">View on GitHub</a>
@@ -58,7 +59,7 @@ rs-llama = { git = &quot;https://github.com/dhhieu113pro/rs-llama&quot; }</code>
     </section>
 
     <section class="capability-rail" aria-label="Supported capabilities">
-      <span>CPU</span><span>Vulkan</span><span>Metal</span><span>Vision</span><span>Hugging Face</span><span>Windows</span><span>Linux</span><span>macOS</span><span>Android / Termux</span>
+      <span>CPU</span><span>CUDA</span><span>Vulkan</span><span>Metal</span><span>Vision</span><span>Hugging Face</span><span>Windows</span><span>Linux</span><span>macOS</span><span>Android / Termux</span>
     </section>
 
     <section class="architecture" aria-labelledby="architecture-title">
@@ -117,11 +118,12 @@ fn main() -&gt; anyhow::Result&lt;()&gt; {
           <div class="example-head">
             <div>
               <p class="example-type">Acceleration</p>
-              <h3 id="backend-example-title">Choose a backend</h3>
+              <h3 id="backend-example-title">Automatic or explicit GPU</h3>
             </div>
             <button class="copy-button" type="button" data-copy-target="backend-code">Copy</button>
           </div>
           <pre><code id="backend-code">cargo build --release
+cargo build --release --features cuda
 cargo build --release --features vulkan
 cargo build --release --features metal</code></pre>
         </article>

@@ -1,20 +1,37 @@
 (() => {
   const root = document.documentElement;
   const toggle = document.getElementById('theme-toggle');
-  const icon = document.getElementById('theme-icon');
   const status = document.getElementById('copy-status');
   const media = window.matchMedia('(prefers-color-scheme: dark)');
-  const storageKey = 'rs-llama-theme';
+  const storageKey = 'site-theme';
+  const modes = ['auto', 'light', 'dark'];
 
-  const effectiveTheme = () => root.dataset.theme || (media.matches ? 'dark' : 'light');
+  const currentMode = () => root.dataset.theme || 'auto';
 
   const renderTheme = () => {
-    const theme = effectiveTheme();
-    if (icon) icon.textContent = theme === 'dark' ? '☀' : '◐';
-    if (toggle) {
-      toggle.title = theme === 'dark' ? 'Use light theme' : 'Use dark theme';
-      toggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+    if (!toggle) return;
+    const mode = currentMode();
+    const label = mode === 'auto' ? 'Auto' : mode === 'light' ? 'Light' : 'Dark';
+    toggle.textContent = label;
+    toggle.dataset.themeMode = mode;
+    toggle.title = `Theme: ${label} — click to change`;
+    toggle.setAttribute('aria-label', `Change color theme. Current: ${label}`);
+  };
+
+  const applyTheme = (mode) => {
+    try {
+      if (mode === 'auto') {
+        delete root.dataset.theme;
+        localStorage.removeItem(storageKey);
+      } else {
+        root.dataset.theme = mode;
+        localStorage.setItem(storageKey, mode);
+      }
+    } catch {
+      if (mode === 'auto') delete root.dataset.theme;
+      else root.dataset.theme = mode;
     }
+    renderTheme();
   };
 
   try {
@@ -26,18 +43,12 @@
   renderTheme();
 
   toggle?.addEventListener('click', () => {
-    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
-    root.dataset.theme = next;
-    try {
-      localStorage.setItem(storageKey, next);
-    } catch {
-      // Keep the in-memory override even when persistence is unavailable.
-    }
-    renderTheme();
+    const current = currentMode();
+    applyTheme(modes[(modes.indexOf(current) + 1) % modes.length]);
   });
 
   media.addEventListener?.('change', () => {
-    if (!root.dataset.theme) renderTheme();
+    if (currentMode() === 'auto') renderTheme();
   });
 
   document.querySelectorAll('[data-copy-target]').forEach((button) => {

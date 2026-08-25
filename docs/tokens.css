@@ -1,22 +1,23 @@
 :root {
   color-scheme: light;
-  --color-paper: oklch(97% 0.012 55);
-  --color-paper-2: oklch(94% 0.014 55);
-  --color-paper-3: oklch(90% 0.016 55);
-  --color-ink: oklch(20% 0.012 45);
-  --color-ink-2: oklch(35% 0.014 45);
-  --color-muted: oklch(51% 0.016 48);
-  --color-rule: oklch(78% 0.016 50);
-  --color-rule-2: oklch(87% 0.012 50);
-  --color-accent: oklch(61% 0.16 42);
-  --color-accent-ink: oklch(18% 0.012 42);
-  --color-focus: oklch(64% 0.20 42);
-  --color-code: oklch(93% 0.018 52);
+  --color-paper: oklch(100% 0 0);
+  --color-paper-2: oklch(97.5% 0.004 260);
+  --color-paper-3: oklch(94.5% 0.006 260);
+  --color-ink: oklch(18% 0.012 260);
+  --color-ink-2: oklch(36% 0.014 260);
+  --color-muted: oklch(52% 0.014 260);
+  --color-rule: oklch(88% 0.008 260);
+  --color-rule-2: oklch(93% 0.006 260);
+  --color-accent: oklch(82% 0.16 205);
+  --color-accent-ink: oklch(15% 0.018 240);
+  --color-focus: oklch(72% 0.17 205);
+  --color-code: oklch(96% 0.006 260);
   --color-success: oklch(58% 0.13 145);
   --color-error: oklch(56% 0.16 25);
+  --color-shadow: oklch(20% 0.02 260 / 0.10);
 
-  --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: Inter, "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: Inter, "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
   --space-1: 0.25rem;
@@ -41,9 +42,9 @@
   --text-3xl: 1.875rem;
   --text-display: clamp(2.8rem, 6vw, 5.6rem);
 
-  --radius-sm: 0.45rem;
+  --radius-sm: 0.6rem;
   --radius-md: 0.8rem;
-  --radius-lg: 1.25rem;
+  --radius-lg: 1.15rem;
   --rule-thin: 1px;
   --dur-fast: 140ms;
   --dur-normal: 220ms;
@@ -54,38 +55,40 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-paper: oklch(16% 0.014 45);
-  --color-paper-2: oklch(20% 0.016 45);
-  --color-paper-3: oklch(25% 0.018 45);
-  --color-ink: oklch(94% 0.012 52);
-  --color-ink-2: oklch(81% 0.014 50);
-  --color-muted: oklch(68% 0.016 48);
-  --color-rule: oklch(35% 0.018 45);
-  --color-rule-2: oklch(27% 0.016 45);
-  --color-accent: oklch(69% 0.15 42);
-  --color-accent-ink: oklch(17% 0.012 42);
-  --color-focus: oklch(73% 0.19 42);
-  --color-code: oklch(20% 0.018 45);
+  --color-paper: oklch(16% 0.012 260);
+  --color-paper-2: oklch(20% 0.014 260);
+  --color-paper-3: oklch(24% 0.016 260);
+  --color-ink: oklch(96% 0.006 260);
+  --color-ink-2: oklch(82% 0.01 260);
+  --color-muted: oklch(68% 0.012 260);
+  --color-rule: oklch(34% 0.014 260);
+  --color-rule-2: oklch(27% 0.012 260);
+  --color-accent: oklch(82% 0.16 205);
+  --color-accent-ink: oklch(15% 0.018 240);
+  --color-focus: oklch(78% 0.17 205);
+  --color-code: oklch(19% 0.014 260);
   --color-success: oklch(70% 0.13 145);
   --color-error: oklch(70% 0.15 25);
+  --color-shadow: oklch(0% 0 0 / 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --color-paper: oklch(16% 0.014 45);
-    --color-paper-2: oklch(20% 0.016 45);
-    --color-paper-3: oklch(25% 0.018 45);
-    --color-ink: oklch(94% 0.012 52);
-    --color-ink-2: oklch(81% 0.014 50);
-    --color-muted: oklch(68% 0.016 48);
-    --color-rule: oklch(35% 0.018 45);
-    --color-rule-2: oklch(27% 0.016 45);
-    --color-accent: oklch(69% 0.15 42);
-    --color-accent-ink: oklch(17% 0.012 42);
-    --color-focus: oklch(73% 0.19 42);
-    --color-code: oklch(20% 0.018 45);
+    --color-paper: oklch(16% 0.012 260);
+    --color-paper-2: oklch(20% 0.014 260);
+    --color-paper-3: oklch(24% 0.016 260);
+    --color-ink: oklch(96% 0.006 260);
+    --color-ink-2: oklch(82% 0.01 260);
+    --color-muted: oklch(68% 0.012 260);
+    --color-rule: oklch(34% 0.014 260);
+    --color-rule-2: oklch(27% 0.012 260);
+    --color-accent: oklch(82% 0.16 205);
+    --color-accent-ink: oklch(15% 0.018 240);
+    --color-focus: oklch(78% 0.17 205);
+    --color-code: oklch(19% 0.014 260);
     --color-success: oklch(70% 0.13 145);
     --color-error: oklch(70% 0.15 25);
+    --color-shadow: oklch(0% 0 0 / 0.35);
   }
 }
