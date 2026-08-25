@@ -3,7 +3,10 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use rs_llama::{resolve_model_files, EngineConfig, GenerateRequest, HfDownload, LlamaEngine};
+use rs_llama::{
+    backend_selection_source, compiled_backend, resolve_model_files, EngineConfig, GenerateRequest,
+    HfDownload, LlamaEngine, DEFAULT_GPU_LAYERS,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Run a GGUF model with llama.cpp from Rust")]
@@ -68,8 +71,8 @@ struct Args {
     #[arg(short = 'c', long, default_value_t = 2048)]
     ctx_size: u32,
 
-    /// Number of GPU layers to offload when built with cuda/vulkan/metal.
-    #[arg(long, default_value_t = 0)]
+    /// Number of model layers to offload. Defaults to all available layers; use 0 for CPU inference.
+    #[arg(long, default_value_t = DEFAULT_GPU_LAYERS)]
     gpu_layers: u32,
 
     /// Number of CPU threads. 0 lets llama.cpp choose.
@@ -89,6 +92,12 @@ fn main() -> Result<()> {
 
 fn run() -> Result<()> {
     let args = Args::parse();
+
+    eprintln!(
+        "Backend: {} ({})",
+        compiled_backend().to_ascii_uppercase(),
+        backend_selection_source()
+    );
 
     let hf = match (&args.hf_repo, &args.hf_file) {
         (Some(repo), Some(file)) => Some(HfDownload {
