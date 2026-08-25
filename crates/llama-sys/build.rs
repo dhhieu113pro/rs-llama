@@ -19,6 +19,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CUDA_HOME");
     println!("cargo:rerun-if-env-changed=CUDA_ROOT");
     println!("cargo:rerun-if-env-changed=VULKAN_SDK");
+    println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
+    println!("cargo:rerun-if-env-changed=PATH");
     println!("cargo:rerun-if-env-changed=ANDROID_NDK_HOME");
     println!("cargo:rerun-if-env-changed=ANDROID_NDK");
     println!("cargo:rerun-if-env-changed=NDK_HOME");
@@ -85,27 +87,38 @@ fn cuda_toolkit_available(target: &str) -> bool {
         return false;
     }
 
+    cuda_root(target).is_some()
+}
+
+fn cuda_root(target: &str) -> Option<PathBuf> {
     let nvcc_name = if target.contains("windows") {
         "nvcc.exe"
     } else {
         "nvcc"
     };
 
-    let env_root = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
+    let valid_root = |root: &Path| {
+        root.join("bin").join(nvcc_name).exists() || root.join("include/cuda.h").exists()
+    };
+
+    if let Some(root) = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
         .into_iter()
         .filter_map(|key| env::var_os(key).map(PathBuf::from))
-        .any(|root| {
-            root.join("bin").join(nvcc_name).exists() || root.join("include/cuda.h").exists()
-        });
-    if env_root {
-        return true;
+        .find(|root| valid_root(root))
+    {
+        return Some(root);
     }
 
-    if !target.contains("windows") && Path::new("/usr/local/cuda/bin/nvcc").exists() {
-        return true;
+    if !target.contains("windows") {
+        let root = PathBuf::from("/usr/local/cuda");
+        if valid_root(&root) {
+            return Some(root);
+        }
     }
 
-    command_succeeds(nvcc_name, &["--version"])
+    command_path(nvcc_name, target)
+        .and_then(|nvcc| nvcc.parent().and_then(Path::parent).map(Path::to_path_buf))
+        .filter(|root| valid_root(root))
 }
 
 fn vulkan_toolkit_available(target: &str) -> bool {
@@ -113,12 +126,8 @@ fn vulkan_toolkit_available(target: &str) -> bool {
         return false;
     }
 
-    if let Some(root) = env::var_os("VULKAN_SDK").map(PathBuf::from) {
-        if root.join("include/vulkan/vulkan.h").exists()
-            || root.join("Include/vulkan/vulkan.h").exists()
-        {
-            return true;
-        }
+    if vulkan_sdk_root().is_some() {
+        return true;
     }
 
     if target.contains("windows") {
@@ -131,6 +140,33 @@ fn vulkan_toolkit_available(target: &str) -> bool {
                 || Path::new("/usr/lib64/libvulkan.so").exists()
                 || Path::new("/usr/lib/x86_64-linux-gnu/libvulkan.so").exists()
                 || Path::new("/usr/lib/aarch64-linux-gnu/libvulkan.so").exists()))
+}
+
+fn vulkan_sdk_root() -> Option<PathBuf> {
+    env::var_os("VULKAN_SDK")
+        .map(PathBuf::from)
+        .filter(|root| {
+            root.join("include/vulkan/vulkan.h").exists()
+                || root.join("Include/vulkan/vulkan.h").exists()
+        })
+}
+
+fn command_path(program: &str, target: &str) -> Option<PathBuf> {
+    let locator = if target.contains("windows") {
+        "where"
+    } else {
+        "which"
+    };
+    let output = Command::new(locator).arg(program).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(PathBuf::from)
 }
 
 fn command_succeeds(program: &str, args: &[&str]) -> bool {
@@ -373,11 +409,7 @@ fn emit_link_flags(dst: &Path, target: &str, backend: Backend) {
     }
 
     if backend == Backend::Vulkan {
-        if target.contains("windows") {
-            println!("cargo:rustc-link-lib=dylib=vulkan-1");
-        } else if !target.contains("apple") {
-            println!("cargo:rustc-link-lib=dylib=vulkan");
-        }
+        emit_vulkan_link_flags(target);
     }
 
     if backend == Backend::Cuda {
@@ -411,13 +443,39 @@ fn emit_link_flags(dst: &Path, target: &str, backend: Backend) {
     }
 }
 
-fn emit_cuda_link_flags(target: &str) {
-    let cuda_root = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
-        .into_iter()
-        .find_map(|key| env::var_os(key).map(PathBuf::from))
-        .or_else(|| (!target.contains("windows")).then(|| PathBuf::from("/usr/local/cuda")));
+fn emit_vulkan_link_flags(target: &str) {
+    if let Some(root) = vulkan_sdk_root() {
+        let candidates = if target.contains("windows") {
+            if target.starts_with("i686-") {
+                vec![root.join("Lib32")]
+            } else {
+                vec![root.join("Lib")]
+            }
+        } else {
+            vec![
+                root.join("lib"),
+                root.join("lib64"),
+                root.join("x86_64/lib"),
+                root.join("aarch64/lib"),
+            ]
+        };
 
-    if let Some(root) = cuda_root {
+        for dir in candidates {
+            if dir.exists() {
+                println!("cargo:rustc-link-search=native={}", dir.display());
+            }
+        }
+    }
+
+    if target.contains("windows") {
+        println!("cargo:rustc-link-lib=dylib=vulkan-1");
+    } else if !target.contains("apple") {
+        println!("cargo:rustc-link-lib=dylib=vulkan");
+    }
+}
+
+fn emit_cuda_link_flags(target: &str) {
+    if let Some(root) = cuda_root(target) {
         let mut search_dirs = Vec::new();
         if target.contains("windows") {
             search_dirs.push(root.join("lib/x64"));
