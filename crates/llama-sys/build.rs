@@ -6,7 +6,9 @@ use std::process::Command;
 #[path = "src/backend.rs"]
 mod backend;
 
-use backend::{select_backend, Backend, Selection, SelectionInput};
+use backend::{
+    select_backend, vulkan_toolchain_ready, Backend, Selection, SelectionInput,
+};
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -126,6 +128,14 @@ fn vulkan_toolkit_available(target: &str) -> bool {
         return false;
     }
 
+    vulkan_toolchain_ready(
+        vulkan_loader_available(target),
+        glslc_available(target),
+        spirv_headers_available(),
+    )
+}
+
+fn vulkan_loader_available(target: &str) -> bool {
     if vulkan_sdk_root().is_some() {
         return true;
     }
@@ -140,6 +150,52 @@ fn vulkan_toolkit_available(target: &str) -> bool {
                 || Path::new("/usr/lib64/libvulkan.so").exists()
                 || Path::new("/usr/lib/x86_64-linux-gnu/libvulkan.so").exists()
                 || Path::new("/usr/lib/aarch64-linux-gnu/libvulkan.so").exists()))
+}
+
+fn glslc_available(target: &str) -> bool {
+    let glslc = if target.contains("windows") {
+        "glslc.exe"
+    } else {
+        "glslc"
+    };
+
+    if let Some(root) = vulkan_sdk_root() {
+        if root.join("bin").join(glslc).exists() || root.join("Bin").join(glslc).exists() {
+            return true;
+        }
+    }
+
+    command_succeeds(glslc, &["--version"])
+}
+
+fn spirv_headers_available() -> bool {
+    fn prefix_has_spirv_headers(prefix: &Path) -> bool {
+        let header = prefix.join("include/spirv/unified1/spirv.hpp").exists()
+            || prefix.join("Include/spirv/unified1/spirv.hpp").exists();
+        if !header {
+            return false;
+        }
+
+        [
+            prefix.join("share/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+            prefix.join("lib/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+            prefix.join("Lib/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+            prefix.join("lib/x86_64-linux-gnu/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+            prefix.join("lib/aarch64-linux-gnu/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+        ]
+        .into_iter()
+        .any(|path| path.exists())
+    }
+
+    if let Some(root) = vulkan_sdk_root() {
+        if prefix_has_spirv_headers(&root) {
+            return true;
+        }
+    }
+
+    [Path::new("/usr"), Path::new("/usr/local")]
+        .into_iter()
+        .any(prefix_has_spirv_headers)
 }
 
 fn vulkan_sdk_root() -> Option<PathBuf> {
