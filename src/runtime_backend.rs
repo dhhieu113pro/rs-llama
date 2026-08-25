@@ -33,9 +33,13 @@ pub struct RuntimeDevice {
     pub is_gpu: bool,
 }
 
-pub(crate) struct SelectedDevices {
+pub(crate) struct DeviceCandidate {
     pub backend: RuntimeBackend,
     pub devices: Vec<llama_sys::ggml_backend_dev_t>,
+}
+
+pub(crate) struct DevicePlan {
+    pub candidates: Vec<DeviceCandidate>,
     pub snapshot: Vec<RuntimeDevice>,
 }
 
@@ -56,45 +60,43 @@ pub fn runtime_devices() -> Vec<RuntimeDevice> {
     }
 }
 
-pub(crate) fn select_devices_for_model(gpu_layers: u32) -> SelectedDevices {
+pub(crate) fn device_plan_for_model(gpu_layers: u32) -> DevicePlan {
     ensure_backend_initialized();
 
     let raw = unsafe { enumerate_raw_devices() };
     let snapshot = raw.iter().map(|(_, device)| device.clone()).collect();
+    let mut candidates = Vec::new();
 
-    if gpu_layers == 0 {
-        return SelectedDevices {
-            backend: RuntimeBackend::Cpu,
-            devices: Vec::new(),
-            snapshot,
-        };
-    }
+    if gpu_layers > 0 {
+        #[cfg(target_os = "macos")]
+        let priorities = [RuntimeBackend::Metal];
+        #[cfg(not(target_os = "macos"))]
+        let priorities = [RuntimeBackend::Cuda, RuntimeBackend::Vulkan];
 
-    #[cfg(target_os = "macos")]
-    let priorities = [RuntimeBackend::Metal];
-    #[cfg(not(target_os = "macos"))]
-    let priorities = [RuntimeBackend::Cuda, RuntimeBackend::Vulkan];
+        for preferred in priorities {
+            let mut devices: Vec<llama_sys::ggml_backend_dev_t> = raw
+                .iter()
+                .filter(|(_, device)| device.is_gpu && device.backend == preferred)
+                .map(|(raw, _)| *raw)
+                .collect();
 
-    for preferred in priorities {
-        let mut devices: Vec<llama_sys::ggml_backend_dev_t> = raw
-            .iter()
-            .filter(|(_, device)| device.is_gpu && device.backend == preferred)
-            .map(|(raw, _)| *raw)
-            .collect();
-
-        if !devices.is_empty() {
-            devices.push(ptr::null_mut());
-            return SelectedDevices {
-                backend: preferred,
-                devices,
-                snapshot,
-            };
+            if !devices.is_empty() {
+                devices.push(ptr::null_mut());
+                candidates.push(DeviceCandidate {
+                    backend: preferred,
+                    devices,
+                });
+            }
         }
     }
 
-    SelectedDevices {
+    candidates.push(DeviceCandidate {
         backend: RuntimeBackend::Cpu,
         devices: Vec::new(),
+    });
+
+    DevicePlan {
+        candidates,
         snapshot,
     }
 }
