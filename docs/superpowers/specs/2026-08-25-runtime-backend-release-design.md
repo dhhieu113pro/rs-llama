@@ -84,11 +84,13 @@ rs-llama-macos-arm64/
 
 Exact library names are taken from the pinned/current llama.cpp build output rather than hard-coded from this document.
 
+A desktop release is invalid if a required backend module is missing from its package. Windows/Linux require CPU, Vulkan, and CUDA modules; macOS requires CPU and Metal. CI must fail the release rather than silently omit a required module.
+
 ## CUDA Runtime Policy
 
 Do not bundle the full CUDA runtime/toolkit in the normal rs-llama release archive.
 
-The CUDA backend module is included when CI can build it, but CUDA activation at runtime depends on the compatible NVIDIA driver/runtime libraries being present on the user's machine. If CUDA cannot load, runtime selection continues to Vulkan and then CPU.
+The CUDA backend module is included in every Windows/Linux desktop release. CUDA activation at runtime depends on compatible NVIDIA driver/runtime libraries being present on the user's machine. If CUDA cannot load or exposes no usable device, runtime selection continues to Vulkan and then CPU.
 
 This keeps the standard release reasonably sized and avoids turning every rs-llama download into a several-hundred-megabyte CUDA distribution.
 
@@ -144,7 +146,7 @@ Expected non-fatal conditions include:
 
 These conditions must not terminate the process while CPU remains usable. They should produce concise diagnostics and continue down the fallback chain.
 
-Fatal conditions remain actual application/model errors such as an unreadable GGUF, incompatible model data, or failure to initialize even the CPU backend.
+Fatal conditions remain actual application/model errors such as an unreadable GGUF, incompatible model data, failure to initialize even the CPU backend, or an incomplete release package missing a backend module that the platform contract requires.
 
 ## GitHub Actions Release Changes
 
@@ -152,13 +154,13 @@ The release workflow must build and test the distributable package, not only `ta
 
 ### Windows/Linux release jobs
 
-Install the build dependencies required to compile both Vulkan and CUDA backend modules. CUDA compilation may use the toolkit available/provisioned in CI; the resulting package does not include the full toolkit/runtime.
+Install/provision the build dependencies required to compile both Vulkan and CUDA backend modules. CUDA compilation may use a toolkit provisioned in CI; the resulting package does not include the full toolkit/runtime.
 
-Build dynamic-backend release output and stage the executable plus required llama/ggml runtime libraries and backend modules into a package directory.
+Build dynamic-backend release output and stage the executable plus required llama/ggml runtime libraries and CPU/Vulkan/CUDA backend modules into a package directory. Packaging fails if any required module is absent.
 
 ### macOS release job
 
-Build dynamic core/runtime with CPU + Metal modules and stage them together.
+Build dynamic core/runtime with CPU + Metal modules and stage them together. Packaging fails if either required module is absent.
 
 ### Android
 
@@ -169,7 +171,7 @@ Keep the current CPU release path for this phase.
 Verification is layered so GPU-less GitHub runners still validate the critical fallback contract.
 
 1. Pure policy/unit tests verify platform priority: CUDA -> Vulkan -> CPU, Metal -> CPU, and explicit CPU behavior.
-2. Package-layout tests verify every desktop archive contains the executable, CPU backend, and expected platform GPU backend modules.
+2. Package-layout tests verify every desktop archive contains the executable, CPU backend, and every GPU backend required by the platform contract.
 3. CPU-fallback smoke test runs the packaged executable in an environment where GPU backends are unavailable/unusable and performs real text inference. This proves that shipping GPU modules does not make GPU availability mandatory.
 4. Existing vision smoke testing should run against the packaged executable when practical, so dynamic library discovery is exercised for multimodal paths too.
 5. Backend loader diagnostics are asserted sufficiently to show that CPU fallback occurred rather than silently testing a different build type.
@@ -197,9 +199,10 @@ Verification is layered so GPU-less GitHub runners still validate the critical f
 The implementation is complete when all of the following are true:
 
 1. A user downloads one standard archive for Windows, Linux, or macOS.
-2. The same Windows/Linux archive can run on a CPU-only machine and on a machine where a packaged GPU backend is usable.
-3. Runtime selection prefers CUDA over Vulkan over CPU on Windows/Linux, and Metal over CPU on macOS.
-4. Missing or unusable GPU dependencies do not prevent CPU inference.
-5. The packaged executable, not merely the build-tree executable, passes release smoke tests.
-6. CLI/runtime diagnostics reflect the backend/device actually available/selected rather than the backend chosen on the CI build host.
-7. Normal release archives do not bundle the full CUDA runtime.
+2. Every Windows/Linux archive contains CPU, Vulkan, and CUDA backend modules; every macOS archive contains CPU and Metal modules.
+3. The same Windows/Linux archive can run on a CPU-only machine and on a machine where a packaged GPU backend is usable.
+4. Runtime selection prefers CUDA over Vulkan over CPU on Windows/Linux, and Metal over CPU on macOS.
+5. Missing or unusable end-user GPU dependencies do not prevent CPU inference.
+6. The packaged executable, not merely the build-tree executable, passes release smoke tests.
+7. CLI/runtime diagnostics reflect the backend/device actually available/selected rather than the backend chosen on the CI build host.
+8. Normal release archives do not bundle the full CUDA runtime.
