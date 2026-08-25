@@ -1,7 +1,9 @@
 #[path = "../src/backend.rs"]
 mod backend;
 
-use backend::{select_backend, Backend, SelectionInput, SelectionSource};
+use backend::{
+    select_backend, vulkan_toolchain_ready, Backend, SelectionInput, SelectionSource,
+};
 
 fn input(target: &str) -> SelectionInput<'_> {
     SelectionInput {
@@ -107,4 +109,19 @@ fn invalid_environment_override_is_rejected() {
     input.requested = Some("directml");
 
     assert!(select_backend(input).is_err());
+}
+
+#[test]
+fn vulkan_toolchain_requires_glslc() {
+    assert!(!vulkan_toolchain_ready(true, false, true));
+}
+
+#[test]
+fn vulkan_toolchain_requires_spirv_headers() {
+    assert!(!vulkan_toolchain_ready(true, true, false));
+}
+
+#[test]
+fn vulkan_toolchain_is_ready_when_all_requirements_exist() {
+    assert!(vulkan_toolchain_ready(true, true, true));
 }
