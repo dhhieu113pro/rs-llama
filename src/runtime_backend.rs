@@ -101,30 +101,23 @@ pub(crate) fn select_devices_for_model(gpu_layers: u32) -> SelectedDevices {
 
 unsafe fn enumerate_raw_devices() -> Vec<(llama_sys::ggml_backend_dev_t, RuntimeDevice)> {
     let mut result = Vec::new();
-    let count = llama_sys::ggml_backend_dev_count();
+    let count = llama_sys::llama_rs_backend_dev_count();
 
     for index in 0..count {
-        let device = llama_sys::ggml_backend_dev_get(index);
+        let device = llama_sys::llama_rs_backend_dev_get(index);
         if device.is_null() {
             continue;
         }
 
-        let name = c_string(llama_sys::ggml_backend_dev_name(device));
-        let description = c_string(llama_sys::ggml_backend_dev_description(device));
-        let reg = llama_sys::ggml_backend_dev_backend_reg(device);
-        let registry_name = if reg.is_null() {
-            String::new()
-        } else {
-            c_string(llama_sys::ggml_backend_reg_name(reg))
-        };
+        let name = c_string(llama_sys::llama_rs_backend_dev_name(device));
+        let description = c_string(llama_sys::llama_rs_backend_dev_description(device));
+        let registry_name = c_string(llama_sys::llama_rs_backend_reg_name_for_device(device));
         let backend = classify_backend(if registry_name.is_empty() {
             &name
         } else {
             &registry_name
         });
-        let device_type = llama_sys::ggml_backend_dev_type(device);
-        let is_gpu = device_type == llama_sys::GGML_BACKEND_DEVICE_TYPE_GPU
-            || device_type == llama_sys::GGML_BACKEND_DEVICE_TYPE_IGPU;
+        let is_gpu = llama_sys::llama_rs_backend_dev_is_gpu(device);
 
         result.push((
             device,
