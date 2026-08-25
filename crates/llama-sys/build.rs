@@ -3,11 +3,26 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "src/backend.rs"]
+mod backend;
+
+use backend::{
+    select_backend, vulkan_toolchain_ready, Backend, Selection, SelectionInput,
+};
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/backend.rs");
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-env-changed=LLAMA_CPP_SRC");
     println!("cargo:rerun-if-env-changed=LLAMA_CPP_REV");
+    println!("cargo:rerun-if-env-changed=RS_LLAMA_BACKEND");
+    println!("cargo:rerun-if-env-changed=CUDA_PATH");
+    println!("cargo:rerun-if-env-changed=CUDA_HOME");
+    println!("cargo:rerun-if-env-changed=CUDA_ROOT");
+    println!("cargo:rerun-if-env-changed=VULKAN_SDK");
+    println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
+    println!("cargo:rerun-if-env-changed=PATH");
     println!("cargo:rerun-if-env-changed=ANDROID_NDK_HOME");
     println!("cargo:rerun-if-env-changed=ANDROID_NDK");
     println!("cargo:rerun-if-env-changed=NDK_HOME");
@@ -15,17 +30,216 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let target = env::var("TARGET").unwrap_or_default();
+    let selection = detect_backend(&target).unwrap_or_else(|err| panic!("{err}"));
+
+    println!(
+        "cargo:warning=rs-llama backend: {} ({})",
+        selection.backend.as_str(),
+        selection.source.as_str()
+    );
+    println!(
+        "cargo:rustc-env=RS_LLAMA_COMPILED_BACKEND={}",
+        selection.backend.as_str()
+    );
+    println!(
+        "cargo:rustc-env=RS_LLAMA_BACKEND_SOURCE={}",
+        selection.source.as_str()
+    );
+
     let src_dir = llama_src_dir(&out_dir);
-    let dst = build_llama(&src_dir, &target);
+    let dst = build_llama(&src_dir, &target, selection.backend);
 
     generate_bindings(&src_dir, &out_dir, &target);
-    emit_link_flags(&dst, &target);
+    emit_link_flags(&dst, &target, selection.backend);
+}
+
+fn detect_backend(target: &str) -> Result<Selection, String> {
+    let host = env::var("HOST").unwrap_or_default();
+    let native_build = same_platform_family(&host, target);
+
+    select_backend(SelectionInput {
+        target,
+        requested: env::var("RS_LLAMA_BACKEND").ok().as_deref(),
+        feature_cuda: cfg!(feature = "cuda"),
+        feature_vulkan: cfg!(feature = "vulkan"),
+        feature_metal: cfg!(feature = "metal"),
+        cuda_available: native_build && cuda_toolkit_available(target),
+        vulkan_available: native_build && vulkan_toolkit_available(target),
+    })
+}
+
+fn same_platform_family(host: &str, target: &str) -> bool {
+    fn family(triple: &str) -> &'static str {
+        if triple.contains("windows") {
+            "windows"
+        } else if triple.contains("apple") {
+            "apple"
+        } else if triple.contains("android") {
+            "android"
+        } else {
+            "unix"
+        }
+    }
+
+    family(host) == family(target)
+}
+
+fn cuda_toolkit_available(target: &str) -> bool {
+    if target.contains("android") || target.contains("apple") {
+        return false;
+    }
+
+    cuda_root(target).is_some()
+}
+
+fn cuda_root(target: &str) -> Option<PathBuf> {
+    let nvcc_name = if target.contains("windows") {
+        "nvcc.exe"
+    } else {
+        "nvcc"
+    };
+
+    let valid_root = |root: &Path| {
+        root.join("bin").join(nvcc_name).exists() || root.join("include/cuda.h").exists()
+    };
+
+    if let Some(root) = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
+        .into_iter()
+        .filter_map(|key| env::var_os(key).map(PathBuf::from))
+        .find(|root| valid_root(root))
+    {
+        return Some(root);
+    }
+
+    if !target.contains("windows") {
+        let root = PathBuf::from("/usr/local/cuda");
+        if valid_root(&root) {
+            return Some(root);
+        }
+    }
+
+    command_path(nvcc_name, target)
+        .and_then(|nvcc| nvcc.parent().and_then(Path::parent).map(Path::to_path_buf))
+        .filter(|root| valid_root(root))
+}
+
+fn vulkan_toolkit_available(target: &str) -> bool {
+    if target.contains("android") || target.contains("apple") {
+        return false;
+    }
+
+    vulkan_toolchain_ready(
+        vulkan_loader_available(target),
+        glslc_available(target),
+        spirv_headers_available(),
+    )
+}
+
+fn vulkan_loader_available(target: &str) -> bool {
+    if vulkan_sdk_root().is_some() {
+        return true;
+    }
+
+    if target.contains("windows") {
+        return false;
+    }
+
+    command_succeeds("pkg-config", &["--exists", "vulkan"])
+        || (Path::new("/usr/include/vulkan/vulkan.h").exists()
+            && (Path::new("/usr/lib/libvulkan.so").exists()
+                || Path::new("/usr/lib64/libvulkan.so").exists()
+                || Path::new("/usr/lib/x86_64-linux-gnu/libvulkan.so").exists()
+                || Path::new("/usr/lib/aarch64-linux-gnu/libvulkan.so").exists()))
+}
+
+fn glslc_available(target: &str) -> bool {
+    let glslc = if target.contains("windows") {
+        "glslc.exe"
+    } else {
+        "glslc"
+    };
+
+    if let Some(root) = vulkan_sdk_root() {
+        if root.join("bin").join(glslc).exists() || root.join("Bin").join(glslc).exists() {
+            return true;
+        }
+    }
+
+    command_succeeds(glslc, &["--version"])
+}
+
+fn spirv_headers_available() -> bool {
+    fn prefix_has_spirv_headers(prefix: &Path) -> bool {
+        let header = prefix.join("include/spirv/unified1/spirv.hpp").exists()
+            || prefix.join("Include/spirv/unified1/spirv.hpp").exists();
+        if !header {
+            return false;
+        }
+
+        [
+            prefix.join("share/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+            prefix.join("lib/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+            prefix.join("Lib/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+            prefix.join("lib/x86_64-linux-gnu/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+            prefix.join("lib/aarch64-linux-gnu/cmake/SPIRV-Headers/SPIRV-HeadersConfig.cmake"),
+        ]
+        .into_iter()
+        .any(|path| path.exists())
+    }
+
+    if let Some(root) = vulkan_sdk_root() {
+        if prefix_has_spirv_headers(&root) {
+            return true;
+        }
+    }
+
+    [Path::new("/usr"), Path::new("/usr/local")]
+        .into_iter()
+        .any(prefix_has_spirv_headers)
+}
+
+fn vulkan_sdk_root() -> Option<PathBuf> {
+    env::var_os("VULKAN_SDK")
+        .map(PathBuf::from)
+        .filter(|root| {
+            root.join("include/vulkan/vulkan.h").exists()
+                || root.join("Include/vulkan/vulkan.h").exists()
+        })
+}
+
+fn command_path(program: &str, target: &str) -> Option<PathBuf> {
+    let locator = if target.contains("windows") {
+        "where"
+    } else {
+        "which"
+    };
+    let output = Command::new(locator).arg(program).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(PathBuf::from)
+}
+
+fn command_succeeds(program: &str, args: &[&str]) -> bool {
+    Command::new(program)
+        .args(args)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
 }
 
 fn llama_src_dir(out_dir: &Path) -> PathBuf {
     if let Ok(path) = env::var("LLAMA_CPP_SRC") {
         let path = PathBuf::from(path);
-        assert!(path.join("include/llama.h").exists(), "LLAMA_CPP_SRC missing include/llama.h");
+        assert!(
+            path.join("include/llama.h").exists(),
+            "LLAMA_CPP_SRC missing include/llama.h"
+        );
         return path;
     }
 
@@ -67,13 +281,16 @@ fn android_abi(target: &str) -> &'static str {
     }
 }
 
-fn build_llama(src: &Path, target: &str) -> PathBuf {
+fn build_llama(src: &Path, target: &str, backend: Backend) -> PathBuf {
     let mut config = cmake::Config::new(src);
     config
         .profile("Release")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("GGML_NATIVE", "OFF")
         .define("GGML_CCACHE", "OFF")
+        .define("GGML_CUDA", "OFF")
+        .define("GGML_VULKAN", "OFF")
+        .define("GGML_METAL", "OFF")
         .define("LLAMA_BUILD_TESTS", "OFF")
         .define("LLAMA_BUILD_TOOLS", "OFF")
         .define("LLAMA_BUILD_EXAMPLES", "OFF")
@@ -82,18 +299,22 @@ fn build_llama(src: &Path, target: &str) -> PathBuf {
         .define("LLAMA_BUILD_APP", "OFF")
         .define("LLAMA_CURL", "OFF");
 
-    if cfg!(feature = "cuda") {
-        config.define("GGML_CUDA", "ON");
-    }
-    if cfg!(feature = "vulkan") {
-        config.define("GGML_VULKAN", "ON");
-    }
-    if (cfg!(feature = "metal") || target.contains("apple")) && !target.contains("android") {
-        config.define("GGML_METAL", "ON");
+    match backend {
+        Backend::Cuda => {
+            config.define("GGML_CUDA", "ON");
+        }
+        Backend::Vulkan => {
+            config.define("GGML_VULKAN", "ON");
+        }
+        Backend::Metal if !target.contains("android") => {
+            config.define("GGML_METAL", "ON");
+        }
+        Backend::Cpu | Backend::Metal => {}
     }
 
     if target.contains("android") {
-        let ndk = android_ndk().expect("ANDROID_NDK_HOME / ANDROID_NDK / NDK_HOME required for Android");
+        let ndk = android_ndk()
+            .expect("ANDROID_NDK_HOME / ANDROID_NDK / NDK_HOME required for Android");
         let toolchain = ndk.join("build/cmake/android.toolchain.cmake");
         config
             .define("CMAKE_TOOLCHAIN_FILE", toolchain.to_string_lossy().as_ref())
@@ -118,7 +339,11 @@ fn msvc_include_paths(out_dir: &Path) -> Vec<String> {
 
     // Prefer INCLUDE already set (Developer Prompt / vcvars / CI).
     if let Ok(include) = env::var("INCLUDE") {
-        for p in include.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+        for p in include
+            .split(';')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             paths.push(p.to_string());
         }
         if !paths.is_empty() {
@@ -137,7 +362,12 @@ fn msvc_include_paths(out_dir: &Path) -> Vec<String> {
                 .iter()
                 .find(|(k, _)| k.eq_ignore_ascii_case("INCLUDE"))
             {
-                for p in value.to_string_lossy().split(';').map(str::trim).filter(|s| !s.is_empty()) {
+                for p in value
+                    .to_string_lossy()
+                    .split(';')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
                     paths.push(p.to_string());
                 }
             }
@@ -192,13 +422,15 @@ fn generate_bindings(src: &Path, out_dir: &Path, target: &str) {
         .expect("failed to write bindings.rs");
 }
 
-fn emit_link_flags(dst: &Path, target: &str) {
+fn emit_link_flags(dst: &Path, target: &str, backend: Backend) {
     let search_dirs = [
         dst.join("lib"),
         dst.join("lib64"),
         dst.join("build/src"),
         dst.join("build/ggml/src"),
         dst.join("build/ggml/src/ggml-cpu"),
+        dst.join("build/ggml/src/ggml-cuda"),
+        dst.join("build/ggml/src/ggml-vulkan"),
     ];
 
     for dir in &search_dirs {
@@ -232,15 +464,11 @@ fn emit_link_flags(dst: &Path, target: &str) {
         println!("cargo:rustc-link-lib=static=ggml-cpu");
     }
 
-    if cfg!(feature = "vulkan") {
-        if target.contains("windows") {
-            println!("cargo:rustc-link-lib=dylib=vulkan-1");
-        } else if !target.contains("apple") {
-            println!("cargo:rustc-link-lib=dylib=vulkan");
-        }
+    if backend == Backend::Vulkan {
+        emit_vulkan_link_flags(target);
     }
 
-    if cfg!(feature = "cuda") {
+    if backend == Backend::Cuda {
         emit_cuda_link_flags(target);
     }
 
@@ -252,8 +480,10 @@ fn emit_link_flags(dst: &Path, target: &str) {
         println!("cargo:rustc-link-lib=dylib=c++");
         println!("cargo:rustc-link-lib=framework=Accelerate");
         println!("cargo:rustc-link-lib=framework=Foundation");
-        println!("cargo:rustc-link-lib=framework=Metal");
-        println!("cargo:rustc-link-lib=framework=MetalKit");
+        if backend == Backend::Metal {
+            println!("cargo:rustc-link-lib=framework=Metal");
+            println!("cargo:rustc-link-lib=framework=MetalKit");
+        }
     } else if target.contains("android") {
         println!("cargo:rustc-link-lib=dylib=c++_shared");
         println!("cargo:rustc-link-lib=dylib=log");
@@ -269,17 +499,39 @@ fn emit_link_flags(dst: &Path, target: &str) {
     }
 }
 
-fn emit_cuda_link_flags(target: &str) {
-    for key in ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"] {
-        println!("cargo:rerun-if-env-changed={key}");
+fn emit_vulkan_link_flags(target: &str) {
+    if let Some(root) = vulkan_sdk_root() {
+        let candidates = if target.contains("windows") {
+            if target.starts_with("i686-") {
+                vec![root.join("Lib32")]
+            } else {
+                vec![root.join("Lib")]
+            }
+        } else {
+            vec![
+                root.join("lib"),
+                root.join("lib64"),
+                root.join("x86_64/lib"),
+                root.join("aarch64/lib"),
+            ]
+        };
+
+        for dir in candidates {
+            if dir.exists() {
+                println!("cargo:rustc-link-search=native={}", dir.display());
+            }
+        }
     }
 
-    let cuda_root = ["CUDA_PATH", "CUDA_HOME", "CUDA_ROOT"]
-        .into_iter()
-        .find_map(|key| env::var_os(key).map(PathBuf::from))
-        .or_else(|| (!target.contains("windows")).then(|| PathBuf::from("/usr/local/cuda")));
+    if target.contains("windows") {
+        println!("cargo:rustc-link-lib=dylib=vulkan-1");
+    } else if !target.contains("apple") {
+        println!("cargo:rustc-link-lib=dylib=vulkan");
+    }
+}
 
-    if let Some(root) = cuda_root {
+fn emit_cuda_link_flags(target: &str) {
+    if let Some(root) = cuda_root(target) {
         let mut search_dirs = Vec::new();
         if target.contains("windows") {
             search_dirs.push(root.join("lib/x64"));

@@ -9,6 +9,9 @@ use anyhow::{bail, Context, Result};
 
 static BACKEND: Once = Once::new();
 
+/// Offload all model layers that llama.cpp can place on the selected GPU backend.
+pub const DEFAULT_GPU_LAYERS: u32 = 999;
+
 /// How to load a GGUF model.
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -26,7 +29,7 @@ impl EngineConfig {
             mmproj_path: None,
             ctx_size: 2048,
             threads: 0,
-            gpu_layers: 0,
+            gpu_layers: DEFAULT_GPU_LAYERS,
         }
     }
 
@@ -350,7 +353,10 @@ where
     if smpl.is_null() {
         bail!("failed to create sampler");
     }
-    llama_sys::llama_sampler_chain_add(smpl, llama_sys::llama_sampler_init_temp(request.temperature));
+    llama_sys::llama_sampler_chain_add(
+        smpl,
+        llama_sys::llama_sampler_init_temp(request.temperature),
+    );
     llama_sys::llama_sampler_chain_add(smpl, llama_sys::llama_sampler_init_dist(request.seed));
 
     let mut generated = String::new();
@@ -384,4 +390,22 @@ where
 
     llama_sys::llama_sampler_free(smpl);
     Ok(generated)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn engine_config_offloads_all_gpu_layers_by_default() {
+        let config = EngineConfig::new("model.gguf");
+        assert_eq!(config.gpu_layers, DEFAULT_GPU_LAYERS);
+        assert_eq!(config.gpu_layers, 999);
+    }
+
+    #[test]
+    fn engine_config_can_force_cpu_inference() {
+        let config = EngineConfig::new("model.gguf").with_gpu_layers(0);
+        assert_eq!(config.gpu_layers, 0);
+    }
 }
