@@ -42,9 +42,25 @@ pub struct RuntimeDevice {
     pub is_gpu: bool,
 }
 
+pub(crate) struct DeviceList(Vec<BackendDevice>);
+
+impl DeviceList {
+    fn new(devices: Vec<BackendDevice>) -> Self {
+        Self(devices)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn as_mut_ptr<T>(&mut self) -> *mut T {
+        self.0.as_mut_ptr().cast()
+    }
+}
+
 pub(crate) struct DeviceCandidate {
     pub backend: RuntimeBackend,
-    pub devices: Vec<BackendDevice>,
+    pub devices: DeviceList,
 }
 
 pub(crate) struct DevicePlan {
@@ -93,7 +109,7 @@ pub(crate) fn device_plan_for_model(gpu_layers: u32) -> DevicePlan {
                 devices.push(ptr::null_mut());
                 candidates.push(DeviceCandidate {
                     backend: preferred,
-                    devices,
+                    devices: DeviceList::new(devices),
                 });
             }
         }
@@ -101,7 +117,7 @@ pub(crate) fn device_plan_for_model(gpu_layers: u32) -> DevicePlan {
 
     candidates.push(DeviceCandidate {
         backend: RuntimeBackend::Cpu,
-        devices: Vec::new(),
+        devices: DeviceList::new(Vec::new()),
     });
 
     DevicePlan {
