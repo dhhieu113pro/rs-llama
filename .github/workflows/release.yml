@@ -10,6 +10,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: build-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -22,19 +26,22 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
+            platform: linux
             artifact: rs-llama-linux-x86_64
             binary: rs-llama
           - name: Windows x64
             os: windows-latest
+            platform: windows
             artifact: rs-llama-windows-x86_64
             binary: rs-llama.exe
           - name: macOS arm64
             os: macos-latest
+            platform: macos
             artifact: rs-llama-macos-arm64
             binary: rs-llama
 
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -52,7 +59,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake clang libclang-dev
+          sudo apt-get install -y build-essential cmake clang libclang-dev pkg-config
 
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
@@ -69,6 +76,29 @@ jobs:
           clang --version
           cmake --version
 
+      - name: Install CUDA toolkit
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+        uses: Jimver/cuda-toolkit@v0.2.36
+        with:
+          cuda: '13.2.0'
+          linux-local-args: '["--toolkit"]'
+          log-file-suffix: '${{ matrix.platform }}.txt'
+
+      - name: Install Vulkan SDK
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true
+
+      - name: Verify GPU build toolchains
+        if: runner.os == 'Linux' || runner.os == 'Windows'
+        shell: bash
+        run: |
+          nvcc --version
+          glslc --version
+          test -n "${VULKAN_SDK:-}"
+
       - name: Cache downloaded GGUF models
         uses: actions/cache@v4
         with:
@@ -78,55 +108,54 @@ jobs:
       - name: Refresh lockfile after crate rename
         run: cargo generate-lockfile
 
-      - name: Build release binary
-        run: cargo build --release
-
-      - name: Run unit tests
+      - name: Run default/static unit tests
+        env:
+          RS_LLAMA_BACKEND: cpu
         run: cargo test --release
 
-      - name: Smoke test LLM inference
+      - name: Build dynamic release bundle
+        run: cargo build --release --features dynamic-backends
+
+      - name: Stage dynamic runtime package
         shell: bash
+        env:
+          PACKAGE_DIR: ${{ runner.temp }}/rs-llama-package
         run: |
           set -euo pipefail
-          if [ -f target/release/rs-llama.exe ]; then
-            BIN=target/release/rs-llama.exe
+          rm -rf "$PACKAGE_DIR"
+          mkdir -p "$PACKAGE_DIR"
+          cp "target/release/${{ matrix.binary }}" "$PACKAGE_DIR/${{ matrix.binary }}"
+
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            find target/release/build -type f \
+              \( -iname 'llama*.dll' -o -iname 'ggml*.dll' \) \
+              -exec cp -f {} "$PACKAGE_DIR/" \;
+          elif [ "${{ matrix.platform }}" = "macos" ]; then
+            find target/release/build -type f \
+              \( -name 'libllama*.dylib' -o -name 'libggml*.dylib' -o -name 'libggml*.so' \) \
+              -exec cp -Lf {} "$PACKAGE_DIR/" \;
           else
-            BIN=target/release/rs-llama
-          fi
-          "$BIN" \
-            --hf-repo mradermacher/SmolLM2-135M-Instruct-GGUF \
-            --hf-file SmolLM2-135M-Instruct.Q4_K_M.gguf \
-            --chat \
-            --no-echo-prompt \
-            --prompt "What is an LED lamp?" \
-            --max-tokens 80 \
-            --ctx-size 1024 \
-            --threads 2 \
-            | tee smoke-output.txt
-          test -s smoke-output.txt
-          if ! grep -qiE 'led|light|diode|lamp|electric|bulb' smoke-output.txt; then
-            echo "Smoke test did not answer the LED lamp question"
-            exit 1
+            find target/release/build -type f \
+              \( -name 'libllama.so*' -o -name 'libggml*.so*' \) \
+              -exec cp -Lf {} "$PACKAGE_DIR/" \;
           fi
 
-      - name: Smoke test vision mmproj + image
+          echo "----- staged runtime package -----"
+          ls -lah "$PACKAGE_DIR"
+
+      - name: Verify packaged runtime backends and CPU fallback
         shell: bash
-        run: bash scripts/ci-vision-smoke.sh
+        run: bash scripts/verify-release-package.sh "${{ runner.temp }}/rs-llama-package" "${{ matrix.platform }}"
 
-      - name: Upload tested Linux/macOS binary
-        if: runner.os != 'Windows'
+      - name: Smoke test vision from packaged runtime
+        shell: bash
+        run: bash scripts/ci-vision-smoke.sh "${{ runner.temp }}/rs-llama-package/${{ matrix.binary }}"
+
+      - name: Upload tested runtime package
         uses: actions/upload-artifact@v4
         with:
           name: tested-${{ matrix.artifact }}
-          path: target/release/rs-llama
-          if-no-files-found: error
-
-      - name: Upload tested Windows binary
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: tested-${{ matrix.artifact }}
-          path: target/release/rs-llama.exe
+          path: ${{ runner.temp }}/rs-llama-package/**
           if-no-files-found: error
 
   android:
@@ -169,7 +198,7 @@ jobs:
   package:
     name: Package binaries
     needs: [test, android]
-    if: success() && (github.event_name != 'pull_request')
+    if: success()
     runs-on: ubuntu-latest
 
     steps:
@@ -183,30 +212,49 @@ jobs:
       - name: Package release archives
         run: |
           set -euo pipefail
-          mkdir -p dist
+          rm -rf pack dist
+          mkdir -p pack dist
           ls -R bins
 
-          pack_unix() {
+          pack_runtime_unix() {
             local artifact="$1"
-            local src="bins/tested-${artifact}/rs-llama"
-            test -f "$src"
+            local src="bins/tested-${artifact}"
+            test -d "$src"
             mkdir -p "pack/${artifact}"
-            cp "$src" "pack/${artifact}/rs-llama"
+            cp -a "$src"/. "pack/${artifact}/"
             chmod +x "pack/${artifact}/rs-llama"
             tar -C pack -czf "dist/${artifact}.tar.gz" "${artifact}"
           }
 
-          pack_unix rs-llama-linux-x86_64
-          pack_unix rs-llama-macos-arm64
-          pack_unix rs-llama-android-arm64
+          pack_runtime_unix rs-llama-linux-x86_64
+          pack_runtime_unix rs-llama-macos-arm64
+
+          mkdir -p pack/rs-llama-android-arm64
+          cp bins/tested-rs-llama-android-arm64/rs-llama pack/rs-llama-android-arm64/rs-llama
+          chmod +x pack/rs-llama-android-arm64/rs-llama
+          tar -C pack -czf dist/rs-llama-android-arm64.tar.gz rs-llama-android-arm64
 
           mkdir -p pack/rs-llama-windows-x86_64
-          cp bins/tested-rs-llama-windows-x86_64/rs-llama.exe pack/rs-llama-windows-x86_64/rs-llama.exe
+          cp -a bins/tested-rs-llama-windows-x86_64/. pack/rs-llama-windows-x86_64/
           python3 - <<'PY'
+          import pathlib
           import zipfile
+
+          root = pathlib.Path('pack/rs-llama-windows-x86_64')
           with zipfile.ZipFile('dist/rs-llama-windows-x86_64.zip', 'w', zipfile.ZIP_DEFLATED) as zf:
-              zf.write('pack/rs-llama-windows-x86_64/rs-llama.exe', 'rs-llama-windows-x86_64/rs-llama.exe')
+              for path in root.rglob('*'):
+                  if path.is_file():
+                      zf.write(path, path.relative_to(root.parent).as_posix())
           PY
+
+          unzip -l dist/rs-llama-windows-x86_64.zip | grep -Ei 'ggml-cpu'
+          unzip -l dist/rs-llama-windows-x86_64.zip | grep -Ei 'ggml-cuda'
+          unzip -l dist/rs-llama-windows-x86_64.zip | grep -Ei 'ggml-vulkan'
+          tar -tzf dist/rs-llama-linux-x86_64.tar.gz | grep -Ei 'ggml-cpu'
+          tar -tzf dist/rs-llama-linux-x86_64.tar.gz | grep -Ei 'ggml-cuda'
+          tar -tzf dist/rs-llama-linux-x86_64.tar.gz | grep -Ei 'ggml-vulkan'
+          tar -tzf dist/rs-llama-macos-arm64.tar.gz | grep -Ei 'ggml-cpu'
+          tar -tzf dist/rs-llama-macos-arm64.tar.gz | grep -Ei 'ggml-metal|metal'
 
           (cd dist && sha256sum * > SHA256SUMS)
           ls -lah dist

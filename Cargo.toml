@@ -34,6 +34,7 @@ default = []
 cuda = ["llama-sys/cuda"]
 vulkan = ["llama-sys/vulkan"]
 metal = ["llama-sys/metal"]
+dynamic-backends = ["llama-sys/dynamic-backends"]
 
 [dependencies]
 anyhow = "1"

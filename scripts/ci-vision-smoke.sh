@@ -2,7 +2,9 @@
 # Vision smoke: generate a text image, download SmolVLM + mmproj, run --image.
 set -euo pipefail
 
-if [ -f target/release/rs-llama.exe ]; then
+if [ "${1:-}" != "" ]; then
+  BIN="$1"
+elif [ -f target/release/rs-llama.exe ]; then
   BIN=target/release/rs-llama.exe
 elif [ -f target/release/rs-llama ]; then
   BIN=target/release/rs-llama
@@ -10,6 +12,12 @@ else
   echo "rs-llama binary not found"
   exit 1
 fi
+
+if [[ "$BIN" != /* && "$BIN" != [A-Za-z]:* ]]; then
+  BIN="$(pwd)/$BIN"
+fi
+
+test -f "$BIN"
 
 python3 -m pip install --user --quiet pillow || pip3 install --user --quiet pillow || true
 python3 scripts/make-vision-image.py

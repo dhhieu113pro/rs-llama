@@ -17,6 +17,7 @@ default = []
 cuda = []
 vulkan = []
 metal = []
+dynamic-backends = []
 
 [build-dependencies]
 bindgen = "0.72"

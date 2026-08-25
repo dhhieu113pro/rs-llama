@@ -125,3 +125,35 @@ fn vulkan_toolchain_requires_spirv_headers() {
 fn vulkan_toolchain_is_ready_when_all_requirements_exist() {
     assert!(vulkan_toolchain_ready(true, true, true));
 }
+
+#[test]
+fn dynamic_mode_rejects_static_gpu_features() {
+    assert!(backend::validate_build_mode(true, true, false, false).is_err());
+    assert!(backend::validate_build_mode(true, false, true, false).is_err());
+    assert!(backend::validate_build_mode(true, false, false, true).is_err());
+}
+
+#[test]
+fn dynamic_mode_accepts_no_static_gpu_feature() {
+    assert!(backend::validate_build_mode(true, false, false, false).is_ok());
+}
+
+#[test]
+fn dynamic_desktop_backend_sets_match_release_contract() {
+    assert_eq!(
+        backend::required_dynamic_backends("x86_64-pc-windows-msvc"),
+        &[Backend::Cpu, Backend::Cuda, Backend::Vulkan]
+    );
+    assert_eq!(
+        backend::required_dynamic_backends("x86_64-unknown-linux-gnu"),
+        &[Backend::Cpu, Backend::Cuda, Backend::Vulkan]
+    );
+    assert_eq!(
+        backend::required_dynamic_backends("aarch64-apple-darwin"),
+        &[Backend::Cpu, Backend::Metal]
+    );
+    assert_eq!(
+        backend::required_dynamic_backends("aarch64-linux-android"),
+        &[Backend::Cpu]
+    );
+}

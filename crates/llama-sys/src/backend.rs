@@ -60,6 +60,36 @@ pub const fn vulkan_toolchain_ready(
     vulkan_loader && glslc && spirv_headers
 }
 
+/// Validate whether the requested Cargo feature combination is supported.
+pub fn validate_build_mode(
+    dynamic: bool,
+    feature_cuda: bool,
+    feature_vulkan: bool,
+    feature_metal: bool,
+) -> Result<(), String> {
+    if dynamic && (feature_cuda || feature_vulkan || feature_metal) {
+        return Err(
+            "dynamic-backends cannot be combined with cuda, vulkan, or metal features".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Backend modules that a dynamic release package must contain for the target.
+pub fn required_dynamic_backends(target: &str) -> &'static [Backend] {
+    const DESKTOP: &[Backend] = &[Backend::Cpu, Backend::Cuda, Backend::Vulkan];
+    const APPLE: &[Backend] = &[Backend::Cpu, Backend::Metal];
+    const CPU: &[Backend] = &[Backend::Cpu];
+
+    if target.contains("android") {
+        CPU
+    } else if target.contains("apple") {
+        APPLE
+    } else {
+        DESKTOP
+    }
+}
+
 pub fn select_backend(input: SelectionInput<'_>) -> Result<Selection, String> {
     let feature_count = [
         input.feature_cuda,
