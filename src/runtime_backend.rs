@@ -4,6 +4,13 @@ use std::os::raw::c_char;
 use std::ptr;
 use std::sync::Once;
 
+unsafe extern "C" {
+    fn ggml_backend_dev_count() -> usize;
+    fn ggml_backend_dev_get(index: usize) -> llama_sys::ggml_backend_dev_t;
+    fn ggml_backend_dev_name(device: llama_sys::ggml_backend_dev_t) -> *const c_char;
+    fn ggml_backend_dev_description(device: llama_sys::ggml_backend_dev_t) -> *const c_char;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeBackend {
     Cpu,
@@ -103,23 +110,21 @@ pub(crate) fn device_plan_for_model(gpu_layers: u32) -> DevicePlan {
 
 unsafe fn enumerate_raw_devices() -> Vec<(llama_sys::ggml_backend_dev_t, RuntimeDevice)> {
     let mut result = Vec::new();
-    let count = llama_sys::llama_rs_backend_dev_count();
+    let count = ggml_backend_dev_count();
 
     for index in 0..count {
-        let device = llama_sys::llama_rs_backend_dev_get(index);
+        let device = ggml_backend_dev_get(index);
         if device.is_null() {
             continue;
         }
 
-        let name = c_string(llama_sys::llama_rs_backend_dev_name(device));
-        let description = c_string(llama_sys::llama_rs_backend_dev_description(device));
-        let registry_name = c_string(llama_sys::llama_rs_backend_reg_name_for_device(device));
-        let backend = classify_backend(if registry_name.is_empty() {
-            &name
-        } else {
-            &registry_name
-        });
-        let is_gpu = llama_sys::llama_rs_backend_dev_is_gpu(device);
+        let name = c_string(ggml_backend_dev_name(device));
+        let description = c_string(ggml_backend_dev_description(device));
+        let backend = classify_backend(&name);
+        let is_gpu = matches!(
+            backend,
+            RuntimeBackend::Cuda | RuntimeBackend::Vulkan | RuntimeBackend::Metal
+        );
 
         result.push((
             device,
